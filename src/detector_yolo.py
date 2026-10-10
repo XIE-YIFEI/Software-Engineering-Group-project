@@ -100,7 +100,11 @@ def annotate(image: np.ndarray, detections: list[Detection], threshold: float,
         x1, y1, x2, y2 = (int(round(v)) for v in d.bbox)
         color = _color_for(d)
         cv2.rectangle(out, (x1, y1), (x2, y2), color, 2)
-        text = f"{d.class_name or d.label} {d.confidence:.2f}"
+        if "[" in d.label:
+            ocr_text = d.label[d.label.find("["):]
+            text = f"{d.class_name or d.label} {ocr_text} {d.confidence:.2f}"
+        else:
+            text = f"{d.class_name or d.label} {d.confidence:.2f}"
         _draw_label(out, text, x1, y1, color)
     return out
 
