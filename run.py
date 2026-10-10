@@ -218,7 +218,11 @@ def run(cfg: Config, args: argparse.Namespace) -> int:
                         x2, y2 = min(w, x2), min(h, y2)
                         if y2 > y1 and x2 > x1:
                             crop = image[y1:y2, x1:x2]
-                            ocr_results = ocr_reader.readtext(crop, detail=0)
+                            ocr_results = ocr_reader.readtext(
+                                crop, 
+                                detail=0,
+                                allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+                            )
                             if ocr_results:
                                 text = " ".join(ocr_results)
                                 d.label = f"{d.label} [{text}]"
