@@ -191,6 +191,13 @@ def run(cfg: Config, args: argparse.Namespace) -> int:
     active_class_thresholds = cfg.per_class_thresholds if cfg.uses_per_class_thresholds else None
     reused_missing = 0
 
+    print("Loading OCR model (easyocr)...")
+    import torchvision
+    if '+' in torchvision.__version__:
+        torchvision.__version__ = torchvision.__version__.split('+')[0]
+    import easyocr
+    ocr_reader = easyocr.Reader(['en'])
+
     t0 = time.time()
     for i, sample in enumerate(samples):
         # Unique output stem so two files sharing a stem can't overwrite each other.
@@ -201,6 +208,23 @@ def run(cfg: Config, args: argparse.Namespace) -> int:
             display_dets = None
             if run_yolo:
                 dets_all = yolo.detect(image)
+                
+                # --- OCR INTEGRATION ---
+                for d in dets_all:
+                    if d.confidence >= cfg.threshold_for(d.class_name):
+                        x1, y1, x2, y2 = [int(v) for v in d.bbox]
+                        h, w = image.shape[:2]
+                        x1, y1 = max(0, x1), max(0, y1)
+                        x2, y2 = min(w, x2), min(h, y2)
+                        if y2 > y1 and x2 > x1:
+                            crop = image[y1:y2, x1:x2]
+                            ocr_results = ocr_reader.readtext(crop, detail=0)
+                            if ocr_results:
+                                text = " ".join(ocr_results)
+                                d.label = f"{d.label} [{text}]"
+                                print(f"  --> OCR Found: {text}")
+                # -----------------------
+
                 display_dets = [d for d in dets_all if d.confidence >= cfg.threshold_for(d.class_name)]
                 out_img = os.path.join(cfg.yolo_out_dir, f"{prefix}.jpg")
                 save_image(
