@@ -1,0 +1,8 @@
+# Hand-labelled plates, data/videos/malaysia_lilin_anpr_road.mp4, 0-44 s (held-out test window:
+# labelled before any evaluation on it and never used for tuning). Format as in the 100-130 s file.
+WHT2598     # grey Proton Satria, two-row plate (~1 s)
+WA2135K     # silver Toyota Vios
+WB8376G     # white Honda City
+WLK6994     # silver Hyundai sedan
+QMU79       # dark blue BMW 3 series
+? VG8909    # white Subaru XV, two-row plate too blurry to verify (~15 s)

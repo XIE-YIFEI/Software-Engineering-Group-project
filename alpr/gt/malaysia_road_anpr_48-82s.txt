@@ -1,0 +1,7 @@
+# Hand-labelled plates, data/videos/malaysia_lilin_anpr_road.mp4, 48-82 s (development window used
+# for tuning; the 100-130 s demo window is kept for testing). Format as in the 100-130 s file.
+BMW319      # blue Proton Persona
+V1108       # black Toyota Hilux
+VCK9720     # white Isuzu truck, two-row plate
+W6336P      # grey Mazda CX-5
+? WSQ3973   # silver MPV occluded by a passing white car (~79 s); text from the vendor overlay, unverified

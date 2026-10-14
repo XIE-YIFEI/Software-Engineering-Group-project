@@ -15,3 +15,9 @@ PyYAML>=6.0                 # config.yaml + dataset data.yaml
 requests>=2.31.0            # Ollama HTTP API (local VLM)
 matplotlib>=3.7.0           # PR-curve plots for threshold tuning (tune.py, Track B)
 anthropic>=0.40.0           # optional --api path (Claude vision); only needed with --api
+
+# ── Malaysian ALPR (alpr/, run_image.py, run_alpr.py) ─────────────────────────
+fast-plate-ocr>=1.1.0       # plate-specific OCR (default backend; model auto-downloads on first use)
+onnxruntime>=1.20           # runtime for fast-plate-ocr. If pip upgrades numpy to 2.x and torch
+                            # breaks, run:  pip install "numpy<2"  (onnxruntime works with numpy 1.26)
+easyocr>=1.7.0              # optional generic OCR fallback (ocr_backend: easyocr)

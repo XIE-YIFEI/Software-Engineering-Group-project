@@ -1,3 +1,11 @@
+> **🚗 Malaysian ALPR & Traffic Flow Monitoring (group project, `haiwen` branch)** — licence-plate recognition
+> for images and CCTV video, plus traffic-flow counting: see **[ALPR_INTRODUCTION.md](ALPR_INTRODUCTION.md)**.
+>
+> **马来西亚车牌识别与交通流量监控（小组项目）** — 图片与 CCTV 视频车牌识别、车流统计，
+> 中英文介绍见 **[ALPR_INTRODUCTION.md](ALPR_INTRODUCTION.md)**，团队使用说明见 [TEAM_GUIDE.md](TEAM_GUIDE.md)。
+>
+> The rest of this README describes the earlier PPE / AR-glasses project this repository started from.
+
 # AI-Empowered Workflow Monitoring for AR-Glasses Inspection
 
 A computer-vision system for a civil-engineering **AR-glasses inspection assistant**. It

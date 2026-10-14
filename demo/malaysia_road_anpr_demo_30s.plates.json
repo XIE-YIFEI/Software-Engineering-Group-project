@@ -1,0 +1,167 @@
+{
+  "source": "data/videos/malaysia_lilin_anpr_road.mp4",
+  "profile": "malaysia_road_anpr",
+  "fps": 30.0,
+  "frames": 900,
+  "window_sec": [
+    100.0,
+    130.0
+  ],
+  "plates": [
+    {
+      "plate": "WTQ 9809",
+      "compact": "WTQ9809",
+      "confidence": 0.9917,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "vtype": "Car",
+      "region": "Kuala Lumpur",
+      "track_ids": [
+        2
+      ],
+      "first_frame": 1,
+      "last_frame": 362,
+      "first_sec": 100.03,
+      "last_sec": 112.07
+    },
+    {
+      "plate": "WWD 6737",
+      "compact": "WWD6737",
+      "confidence": 0.8375,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "vtype": "Car",
+      "region": "Kuala Lumpur",
+      "track_ids": [
+        23
+      ],
+      "first_frame": 207,
+      "last_frame": 471,
+      "first_sec": 106.9,
+      "last_sec": 115.7
+    },
+    {
+      "plate": "WRS 7607",
+      "compact": "WRS7607",
+      "confidence": 0.9597,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "vtype": "Car",
+      "region": "Kuala Lumpur",
+      "track_ids": [
+        105
+      ],
+      "first_frame": 425,
+      "last_frame": 598,
+      "first_sec": 114.17,
+      "last_sec": 119.93
+    },
+    {
+      "plate": "CAX 3029",
+      "compact": "CAX3029",
+      "confidence": 0.9943,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "vtype": "Car",
+      "region": "Pahang",
+      "track_ids": [
+        124
+      ],
+      "first_frame": 531,
+      "last_frame": 806,
+      "first_sec": 117.7,
+      "last_sec": 126.87
+    },
+    {
+      "plate": "WA 9299 M",
+      "compact": "WA9299M",
+      "confidence": 0.9309,
+      "votes": 11,
+      "status": "CONFIRMED",
+      "vtype": "Car",
+      "region": "Kuala Lumpur",
+      "track_ids": [
+        152
+      ],
+      "first_frame": 578,
+      "last_frame": 658,
+      "first_sec": 119.27,
+      "last_sec": 121.93
+    },
+    {
+      "plate": "WB 7605 J",
+      "compact": "WB7605J",
+      "confidence": 0.9924,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "vtype": "Car",
+      "region": "Kuala Lumpur",
+      "track_ids": [
+        155
+      ],
+      "first_frame": 581,
+      "last_frame": 900,
+      "first_sec": 119.37,
+      "last_sec": 130.0
+    },
+    {
+      "plate": "VCH 1587",
+      "compact": "VCH1587",
+      "confidence": 0.9999,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "vtype": "Car",
+      "region": "Kuala Lumpur",
+      "track_ids": [
+        161
+      ],
+      "first_frame": 601,
+      "last_frame": 875,
+      "first_sec": 120.03,
+      "last_sec": 129.17
+    },
+    {
+      "plate": "VN 1683",
+      "compact": "VN1683",
+      "confidence": 0.9372,
+      "votes": 30,
+      "status": "CONFIRMED",
+      "vtype": "Car",
+      "region": "Kuala Lumpur",
+      "track_ids": [
+        216
+      ],
+      "first_frame": 796,
+      "last_frame": 900,
+      "first_sec": 126.53,
+      "last_sec": 130.0
+    }
+  ],
+  "flow": {
+    "count_line_y": 0.62,
+    "total": 8,
+    "by_type": {
+      "Car": 8
+    },
+    "per_10s": [
+      {
+        "t_start": 100.0,
+        "t_end": 110.0,
+        "total": 1,
+        "Car": 1
+      },
+      {
+        "t_start": 110.0,
+        "t_end": 120.0,
+        "total": 2,
+        "Car": 2
+      },
+      {
+        "t_start": 120.0,
+        "t_end": 130.0,
+        "total": 5,
+        "Car": 5
+      }
+    ]
+  }
+}

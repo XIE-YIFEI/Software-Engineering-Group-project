@@ -1,0 +1,14 @@
+# Hand-labelled plates, data/videos/malaysia_lilin_anpr_road.mp4, 100-130 s (demo window, profile
+# malaysia_road_anpr). One plate per vehicle, read by eye at the vehicle's closest unoccluded view.
+# Lines starting with "?" are vehicles whose plate a human cannot verify (occluded): a prediction
+# close to them is neither a hit nor a false positive.
+W6954F      # black Perodua Myvi
+WTQ9809     # silver Honda CR-V
+WRS7607     # black Honda CR-V
+WWD6737     # silver Proton Persona
+WA9299M     # Mazda BT-50 pickup, two-row plate
+CAX3029     # red Proton Iswara
+VCH1587     # dark Perodua Bezza
+WB7605J     # Hyundai i10
+VN1683      # BMW 3 series (reaches the camera at ~130 s)
+? MBDD67    # white sedan hidden behind the silver CR-V (~104 s); text from the vendor overlay, unverified

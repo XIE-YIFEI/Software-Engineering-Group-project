@@ -1,0 +1,10 @@
+# ByteTrack for ALPR (ultralytics defaults except track_buffer).
+# The vehicle model is run with a low confidence (track_conf, 0.1) so the second, low-score stage can
+# keep tracks alive through partial occlusion; 2 s of track_buffer at 30 FPS rides out trees/poles.
+tracker_type: bytetrack
+track_high_thresh: 0.25
+track_low_thresh: 0.1
+new_track_thresh: 0.25
+track_buffer: 60
+match_thresh: 0.8
+fuse_score: True
