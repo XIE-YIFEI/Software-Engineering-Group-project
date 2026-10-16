@@ -53,7 +53,7 @@ class AlprConfig:
     min_sharpness: float = 30.0
     sharp_ref: float = 300.0
     max_plate_corrections: int = 1
-    resolve_ligatures: bool = True     # align visual ligatures like W <-> VJ in slanted plate fonts
+    resolve_ligatures: bool = False    # W <-> VJ ligature fix for EasyOCR misreads (not needed with fast_plate_ocr)
     min_votes: int = 3
     confirm_conf: float = 0.6
 
@@ -61,12 +61,27 @@ class AlprConfig:
     log_min_status: str = "CONFIRMED"  # a vehicle enters the plate log / results once its plate reaches this
     count_line_y: float = 0.0          # traffic-flow counting line (fraction of frame height); 0 = off
 
+    # plate verification against a (SIMULATED) vehicle registry, alpr/registry.py
+    registry_enabled: bool = False
+    registry_path: str = "data/registry/demo_registry.db"   # missing -> the demo registry is built there
+    registry_rules: List[str] = field(default_factory=lambda: [
+        "UNMATCHED", "EXPIRED", "ILLEGAL_FORMAT", "BLACKLIST", "TYPE_MISMATCH", "DUPLICATE"])
+    registry_check_colour: bool = False     # TYPE_MISMATCH also compares an HSV colour estimate
+    registry_max_speed_kmh: float = 250.0   # DUPLICATE: faster implied travel between cameras = cloned plate
+    registry_misread_tolerance: bool = True  # 1 char off a registered plate = OCR misread, not UNMATCHED
+    registry_sim_events: List[dict] = field(default_factory=list)   # SIMULATED sightings injected into the log
+    video_start_time: str = ""         # wall-clock time of video second 0 (ISO); "" = now. Road-tax checks
+    camera_name: str = ""
+    camera_latlon: List[float] = field(default_factory=list)       # [lat, lon]; needed for the travel check
+
     hud_mode: str = "lead"             # lead = dashcam AR card on the main target; dashboard = CCTV layout
     dashboard_size: List[int] = field(default_factory=lambda: [1920, 1080])
+    hud_banner: str = ""               # dashboard: disclosure strip over the camera view (e.g. SIMULATION ...)
+    summary_sec: float = 0.0           # dashboard: append an end card listing every vehicle + verdict
     lane_weight: float = 0.6
     lead_hysteresis: float = 1.25
     min_lead_w_frac: float = 0.104
-    hud_title: str = "SECS AI VISION  |  MALAYSIA ALPR"
+    hud_title: str = "SECS Vision · Malaysia ALPR"
 
 
 def load_config(profile: str, path: str = DEFAULT_PATH) -> AlprConfig:

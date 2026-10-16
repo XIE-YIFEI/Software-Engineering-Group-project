@@ -57,6 +57,9 @@ UNKNOWN_FIRST_LETTER_PRIOR = 0.05
 # Slot decoding: accept the best legal plate only if it is at least this likely relative to the
 # unconstrained top-1 reading; otherwise the plate is reported as non-standard (``valid=False``).
 MIN_LEGAL_RATIO = 1e-3
+# Slot decoding: a legal plate whose length differs from what the model reads, where the model is at
+# least this sure of the character (or of the padding) it would have to drop / add, is not accepted.
+LENGTH_CONFLICT_PROB = 0.5
 
 
 @dataclass(frozen=True)
@@ -286,6 +289,15 @@ def decode_slots(probs: np.ndarray, alphabet: str, pad_char: str = "_",
 
     raw_conf = math.exp(raw_score / n_slots)
     if best is None or best[0] - raw_score < math.log(min_legal_ratio):
+        return SlotDecode(raw, raw_conf, None, 0.0)
+    # Correcting a character inside a slot (O -> 0, 8 -> B) is fine, but the legal plate must not need
+    # a different *length* than the model sees: dropping a character the model reads with confidence
+    # would turn the illegal 'WXY 12345' into the legal 'WXY 1234'.
+    n_legal = len(best[1].compact)
+    p_top = np.exp(logp.max(1))
+    pad_i = index[pad_char]
+    if any(top[s] != pad_i and p_top[s] >= LENGTH_CONFLICT_PROB for s in range(n_legal, n_slots)) or \
+            any(top[s] == pad_i and p_top[s] >= LENGTH_CONFLICT_PROB for s in range(n_legal)):
         return SlotDecode(raw, raw_conf, None, 0.0)
     return SlotDecode(raw, raw_conf, best[1], math.exp(best[0] / n_slots))
 

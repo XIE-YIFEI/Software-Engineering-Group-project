@@ -53,9 +53,10 @@ class LineCounter:
     def by_type(self) -> Dict[str, int]:
         return dict(Counter(c.vtype for c in self.crossings))
 
-    def rate_per_min(self, frame: int, fps: float, window_sec: float = 60.0) -> float:
-        """Vehicles per minute over the last `window_sec` (or since the start, if shorter)."""
-        span = min(window_sec, max(frame / fps, 1e-6))
+    def rate_per_min(self, frame: int, fps: float, window_sec: float = 60.0, min_span_sec: float = 15.0) -> float:
+        """Vehicles per minute over the last `window_sec`. Early on the elapsed time is short and one
+        vehicle would read as a huge rate, so the span is at least `min_span_sec`."""
+        span = max(min(window_sec, frame / fps), min_span_sec)
         recent = sum(1 for c in self.crossings if (frame - c.frame) / fps <= window_sec)
         return recent * 60.0 / span
 

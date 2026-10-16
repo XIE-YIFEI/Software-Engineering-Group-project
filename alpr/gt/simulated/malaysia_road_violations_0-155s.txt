@@ -1,0 +1,28 @@
+# Ground truth for data/videos/malaysia_road_violations_SIMULATED.mp4 (whole clip, 0-155 s), profile
+# malaysia_road_violations. Kept OUT of alpr/gt/*.txt on purpose: plates there become neutral
+# placeholder records in the simulated registry, and the fictitious plates below must not.
+#
+# Real plates (hand-read in the original footage; expected verdict VALID):
+WHT2598     # grey Proton Satria, two-row plate (~1 s)
+WA2135K     # silver Toyota Vios
+BMW319      # blue Proton Persona
+V1108       # black Toyota Hilux
+VCK9720     # white Isuzu lorry, two-row plate
+WSQ3973     # silver Proton Exora (~87 s)
+WTQ9809     # silver Honda CR-V
+WRS7607     # black Honda CR-V
+WA9299M     # Mazda BT-50 pickup, two-row plate
+WB7605J     # Hyundai i10
+VN1683      # BMW 3 series
+VCV155      # white Mercedes C-class (~149 s)
+W6954F      # black Perodua Myvi, hidden behind a CR-V almost the whole time (hard)
+# Fictitious plates digitally inserted (alpr/simulation.yaml), with the alerts they must raise:
+XSD4004 ! DUPLICATE    # on the dark BMW (real QMU79): DUPLICATE (seen in Johor Bahru 17 min before)
+XSA1001 ! EXPIRED,TYPE_MISMATCH    # on the white Honda City (real WB8376G): EXPIRED + TYPE_MISMATCH (registered motorcycle)
+XSE5005 ! UNMATCHED    # on the silver Hyundai (real WLK6994): UNMATCHED
+WXY12345 ! ILLEGAL_FORMAT    # on the grey Mazda CX-5 (real W6336P): ILLEGAL_FORMAT (five digits)
+XSB2002 ! BLACKLIST    # on the silver Proton Persona (real WWD6737): BLACKLIST (reported stolen)
+XSG7007 ! DUPLICATE    # on the red Proton Iswara (real CAX3029): DUPLICATE (same plate on two cars in view)
+XSG7007 ! DUPLICATE    # on the Perodua Bezza (real VCH1587): DUPLICATE (same plate on two cars in view)
+? VG8909    # white Subaru XV, two-row plate too blurry to verify (~15 s)
+? MBDD67    # white sedan hidden behind the silver CR-V (~104 s)

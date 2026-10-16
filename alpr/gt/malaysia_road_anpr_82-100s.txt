@@ -1,0 +1,2 @@
+# Hand-labelled plates, data/videos/malaysia_lilin_anpr_road.mp4, 82-100 s. Format as in the 100-130 s file.
+WSQ3973     # silver Proton Exora (~87 s; occluded at ~79 s in the 48-82 s window)

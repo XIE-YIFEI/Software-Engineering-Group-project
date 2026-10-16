@@ -8,19 +8,23 @@ The video pipeline (pipeline.py) reads many frames of the same vehicle and votes
 view, so instead the plate is read from a few crops with different margins and the OCR
 probabilities can be averaged (``ocr_tta``). On the Malaysian val set this was a wash (+-1 plate of
 94 depending on the margins), so it is off by default.
+
+With a ``PlateChecker`` (alpr/registry.py, SIMULATED registry) every plate also gets registry alerts:
+illegal format, unmatched, expired, blacklisted, seen elsewhere (the vehicle type is unknown in a photo).
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
-from PIL import Image, ImageDraw
 
+from . import hud
 from .config import AlprConfig
-from .hud import _font
 from .ocr import OcrRead, make_ocr
+from .registry import HIGH, ILLEGAL_FORMAT, Alert, PlateChecker
 
 Box = Tuple[int, int, int, int]
 # (horizontal, vertical) crop margin as a fraction of the plate box. The first one is the margin the
@@ -38,6 +42,7 @@ class PlateResult:
     valid: bool               # matches a legal Malaysian format (standard or special series)
     region: str               # registration state / category, "" when not valid
     raw: str                  # OCR text before syntax decoding
+    alerts: List[Alert] = field(default_factory=list)   # registry alerts (only with a PlateChecker)
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -54,13 +59,14 @@ def crop_plate(img: np.ndarray, box: Box, margin: Tuple[float, float] = CROP_MAR
 
 
 class ImageALPR:
-    def __init__(self, cfg: AlprConfig, detector=None, ocr=None):
+    def __init__(self, cfg: AlprConfig, detector=None, ocr=None, checker: Optional[PlateChecker] = None):
         self.cfg = cfg
         if detector is None:
             from ultralytics import YOLO
             detector = YOLO(cfg.plate_model)
         self.detector = detector
         self.ocr = ocr or make_ocr(cfg.ocr_backend, cfg.ocr_model)
+        self.checker = checker
 
     def detect(self, img: np.ndarray) -> List[Tuple[Box, float]]:
         """Plate boxes (pixels) with detector confidence, after size / aspect sanity checks."""
@@ -81,38 +87,42 @@ class ImageALPR:
         margins = CROP_MARGINS if self.cfg.ocr_tta else CROP_MARGINS[:1]
         return self.ocr.read_plate([crop_plate(img, box, m) for m in margins])
 
-    def __call__(self, img: np.ndarray) -> List[PlateResult]:
+    def __call__(self, img: np.ndarray, when: Optional[datetime] = None) -> List[PlateResult]:
+        """when: observation time for the registry checks (None = now)."""
         results = []
         for box, det_conf in self.detect(img):
             r = self.read(img, box)
             if r is None:
                 continue
+            alerts = self.checker.check(r.text, valid=r.valid, when=when) if self.checker else []
             results.append(PlateResult(box, det_conf, r.parse.text if r.valid else r.text, r.text,
-                                       r.conf, r.valid, r.parse.region if r.valid else "", r.raw))
+                                       r.conf, r.valid, r.parse.region if r.valid else "", r.raw, alerts))
         return results
 
 
 def annotate(img: np.ndarray, plates: List[PlateResult]) -> np.ndarray:
-    """Draw plate boxes and readings: green = legal Malaysian plate, orange = non-standard text."""
+    """Draw plate outlines and capsule labels in the dashboard style: green dot = legal Malaysian
+    plate, orange = non-standard text or a registry alert, red = a high-severity alert."""
     out = img.copy()
     h, w = out.shape[:2]
-    size = max(14, int(min(h, w) / 32))
-    labels = []
+    scale = max(1.0, min(h, w) / 720)
+    T = hud._Text()
+    ph = int(30 * scale)
+    f_plate, f_meta = hud._font("semibold", int(16 * scale)), hud._font("regular", int(13 * scale))
     for p in plates:
-        color = (60, 200, 90) if p.valid else (0, 150, 255)
+        alerts = [a for a in p.alerts if a.code != ILLEGAL_FORMAT]
+        rgb = hud.GREEN if p.valid and not alerts else hud.ORANGE
+        if any(a.severity == HIGH for a in p.alerts):
+            rgb = hud.RED
         x1, y1, x2, y2 = p.box
-        cv2.rectangle(out, (x1, y1), (x2, y2), color, max(2, size // 8), cv2.LINE_AA)
-        label = f"{p.text}  {p.ocr_conf:.0%}" + ((f"  {p.region}" if p.region else "") if p.valid
-                                                  else "  (non-standard)")
-        tw = int(len(label) * size * 0.58) + 10
-        ty = y1 - size - 10 if y1 - size - 10 > 0 else y2 + 4
-        tx = min(max(0, x1), max(0, w - tw))
-        cv2.rectangle(out, (tx, ty), (tx + tw, ty + size + 8), color, -1)
-        labels.append(((tx + 5, ty + 2), label))
-    if not labels:
-        return out
-    pil = Image.fromarray(cv2.cvtColor(out, cv2.COLOR_BGR2RGB))
-    draw = ImageDraw.Draw(pil)
-    for xy, label in labels:
-        draw.text(xy, label, fill=(255, 255, 255), font=_font("bold", size))
-    return cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
+        hud.stroke(out, (x1, y1, x2, y2), max(3, int(4 * scale)), rgb, max(2, int(2 * scale)), 0.95)
+        meta = f"{p.ocr_conf:.0%}" + (f" · {p.region}" if p.valid and p.region else "" if p.valid else " · Non-standard")
+        lw = int(ph + f_plate.getlength(p.text) + 6 + f_meta.getlength(meta) + ph / 2)
+        lx = int(np.clip(x1, 2, max(2, w - lw - 2)))
+        ly = y1 - ph - 6 if y1 - ph - 6 > 0 else y2 + 6
+        hud._pill(out, T, lx, ly, p.text, f_plate, dot_rgb=rgb, glassy=True, h=ph, extra=meta, extra_font=f_meta)
+        if alerts:                                          # alert capsule above the plate label
+            ay = ly - ph - 4 if ly - ph - 4 > 0 else ly + ph + 4
+            hud._pill(out, T, lx, ay, hud._alert_label(alerts), f_meta, bg=hud._ALERT_RGB[alerts[0].severity],
+                      h=int(26 * scale))
+    return T.draw(out)

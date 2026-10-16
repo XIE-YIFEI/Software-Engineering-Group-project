@@ -1,5 +1,5 @@
 """Unit tests for the model-free ALPR logic (plates, slot decoding, voting, quality, lead, evaluate,
-dataset labels, OCR reading order).
+dataset labels, OCR reading order, registry rules and alerts).
 
 No weights, video or GPU needed:
 
@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import os
 import sys
+from collections import defaultdict
+from datetime import date, datetime
 
 import cv2
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from alpr.config import AlprConfig
 from alpr.evaluate import edit_distance, evaluate
 from alpr.lead import LeadSelector
 from alpr.dataset import parse_label_line
@@ -23,7 +26,10 @@ from alpr.flow import LineCounter
 from alpr.ocr import EasyPlateOCR
 from alpr.plates import decode_slots, parse_plate
 from alpr.quality import assess, sharpness
-from alpr.voting import ACQUIRING, CONFIRMED, TENTATIVE, PlateVoter
+from alpr.registry import (BLACKLIST, DUPLICATE, EXPIRED, ILLEGAL_FORMAT, TYPE_MISMATCH, UNMATCHED, PlateChecker,
+                           Registry, Sighting, VehicleRecord, build_demo_registry, check_travel, estimate_colour,
+                           real_plates)
+from alpr.voting import ACQUIRING, CONFIRMED, TENTATIVE, PlateResult, PlateVoter
 
 
 # ---------------------------------------------------------------- plates
@@ -125,6 +131,16 @@ def test_slot_decoding_special_series_and_two_row():
     assert d.parse.text == "SAB 1633 C"
 
 
+def test_slot_decoding_does_not_drop_a_confident_character():
+    """Seen on video: 'WXY12345' with the 5th digit at 0.88 was decoded as the legal 'WXY1234'."""
+    spec = [{c: 0.98} for c in "WXY1234"] + [{"5": 0.88, "_": 0.11}]
+    d = decode_slots(_slots(spec), ALPHABET)
+    assert not d.valid and d.raw == "WXY12345"
+    # an unsure trailing character (border, bolt) may still be dropped
+    spec = [{c: 0.98} for c in "WXY1234"] + [{"1": 0.3, "_": 0.6}]
+    assert decode_slots(_slots(spec), ALPHABET).parse.compact == "WXY1234"
+
+
 def test_slot_decoding_rejects_non_plates():
     d = decode_slots(_slots([{c: 0.99} for c in "PERODUA262"]), ALPHABET)   # dealer frame
     assert not d.valid and d.raw == "PERODUA262" and d.conf == 0.0
@@ -220,6 +236,46 @@ def test_one_ambiguous_character_blocks_confirmation():
         v.add(1, "VCH1587", conf=0.95)
     r = v.result(1)
     assert r.compact == "VCH1587" and r.status == CONFIRMED
+
+
+def test_nonstandard_plate_is_not_repaired_into_a_legal_one():
+    """'WXY12345' (five digits) used to be trimmed to the legal 'WXY 1234' and reported as valid."""
+    v = PlateVoter(min_votes=3)
+    for _ in range(6):
+        assert v.add(1, "WXY12345", conf=0.95, quality=0.9, valid=False) is None
+    r = v.result(1)
+    assert r.compact == "WXY12345" and r.text == "WXY 12345" and not r.valid and r.status == CONFIRMED
+    v.add(2, "WXY12345", conf=0.95)                     # no OCR verdict (EasyOCR path): old parsing
+    assert v.result(2).compact == "WXY1234" and v.result(2).valid
+
+
+def test_far_junk_does_not_override_a_clear_legal_plate():
+    v = PlateVoter(min_votes=3)
+    for _ in range(3):
+        v.add(1, "QQ7", conf=0.6, quality=0.05, valid=False)          # far, blurry
+    for _ in range(6):
+        v.add(1, "VCV155", conf=0.95, quality=0.9, valid=True)
+    r = v.result(1)
+    assert r.compact == "VCV155" and r.valid and r.status == CONFIRMED
+
+
+def test_display_nonstandard():
+    from alpr.voting import display_nonstandard
+    assert display_nonstandard("WXY12345") == "WXY 12345"
+    assert display_nonstandard("FAKE1A") == "FAKE 1 A"
+
+
+def test_render_and_paste_plate_only_touch_the_box():
+    from alpr.simulate import paste_plate, render_plate
+    plate = render_plate("XSB 2002")
+    assert plate.shape[0] < plate.shape[1] and plate.mean() < 80          # dark plate, light characters
+    assert render_plate("XSB 2002", two_row=True).shape[0] > plate.shape[0]
+    frame = np.full((200, 300, 3), 120, np.uint8)
+    before = frame.copy()
+    paste_plate(frame, (100, 80, 200, 110), plate)
+    changed = np.argwhere((frame != before).any(axis=2))
+    assert changed.size and changed[:, 0].min() >= 80 and changed[:, 0].max() < 110
+    assert changed[:, 1].min() >= 100 and changed[:, 1].max() < 200
 
 
 # ---------------------------------------------------------------- quality
@@ -345,6 +401,244 @@ def test_same_vehicle_plate_matching():
     assert _same_plate("VN683", "VN1683")             # dropped digit
     assert not _same_plate("WB7605J", "WRS7607")      # different cars
     assert not _same_plate("QMU79", "WB79")           # short plates need a closer match
+
+
+# ---------------------------------------------------------------- registry checks
+NOW = datetime(2026, 10, 14, 8, 0)
+KL, JB = (3.1390, 101.6869), (1.4927, 103.7414)        # ~300 km apart
+
+
+def _registry():
+    reg = Registry()                                   # in-memory
+    reg.add([VehicleRecord("WA1234B", "Sedan", "Silver", "Proton Saga", date(2027, 1, 31)),
+             VehicleRecord("VJF1234", "Hatchback", "Red", road_tax_expiry=date(2026, 9, 30)),
+             VehicleRecord("BMW319", "Sedan", status="blacklisted", note="reported stolen"),
+             VehicleRecord("SAB1633C", "Motorcycle"),
+             VehicleRecord("V1108", "Pickup")])
+    reg.add_sightings([Sighting("WA1234B", datetime(2026, 10, 14, 7, 45), "Johor Bahru", *JB)])
+    return reg
+
+
+def _codes(alerts):
+    return [a.code for a in alerts]
+
+
+def test_registry_unmatched_and_illegal_format():
+    chk = PlateChecker(_registry())
+    assert chk.check("SAB 1633 C", when=NOW, vtype="Motorcycle") == []          # spaces / case do not matter
+    assert _codes(chk.check("WXY1234", when=NOW)) == [UNMATCHED]
+    assert _codes(chk.check("LUMPUR", when=NOW)) == [ILLEGAL_FORMAT]            # no registry rule on non-plates
+    assert _codes(chk.check("VJF1234", valid=False, when=NOW)) == [ILLEGAL_FORMAT]   # the OCR's verdict wins
+
+
+def test_one_character_off_a_registered_plate_is_a_misread_not_unmatched():
+    """Seen on the demo video: VCH 1587 was briefly confirmed as VCR 1587, VN 1683 as VW 1683."""
+    reg = _registry()
+    assert reg.near("WA1284B") == ["WA1234B"] and reg.near("WA123B") == ["WA1234B"] and reg.near("WXY1234") == []
+    chk = PlateChecker(reg)
+    assert chk.check("WA1284B", when=NOW) == []                                 # probable misread
+    assert chk.check("BMW318", when=NOW, vtype="Car") == []                     # not blamed for BMW319's record
+    assert _codes(PlateChecker(reg, misread_tolerance=False).check("WA1284B", when=NOW)) == [UNMATCHED]
+
+
+def test_registry_expiry_uses_the_observation_time():
+    chk = PlateChecker(_registry())
+    assert chk.check("VJF1234", when=datetime(2026, 9, 30, 23, 59)) == []      # last valid day
+    a = chk.check("VJF1234", when=datetime(2026, 10, 2, 9, 0))
+    assert _codes(a) == [EXPIRED] and "2026-09-30" in a[0].message and a[0].severity == "medium"
+
+
+def test_registry_blacklist_and_vehicle_type():
+    chk = PlateChecker(_registry())
+    a = chk.check("BMW319", when=NOW, vtype="Car")
+    assert _codes(a) == [BLACKLIST] and a[0].severity == "high" and a[0].message == "reported stolen"
+    assert _codes(chk.check("SAB1633C", when=NOW, vtype="Car")) == [TYPE_MISMATCH]   # motorcycle plate on a car
+    assert chk.check("V1108", when=NOW, vtype="Truck") == []                  # pickups are often "truck"
+    assert chk.check("SAB1633C", when=NOW, vtype=None) == []                  # photo: type unknown, not checked
+    a = PlateChecker(_registry()).check("BMW319", when=NOW, vtype="Motorcycle")
+    assert _codes(a) == [BLACKLIST, TYPE_MISMATCH]                            # most severe first
+
+
+def test_registry_rules_can_be_switched_off():
+    chk = PlateChecker(_registry(), rules=["EXPIRED"])
+    assert chk.check("WXY1234", when=NOW) == [] and chk.check("LUMPUR", when=NOW) == []
+    try:
+        PlateChecker(_registry(), rules=["STOLEN"])
+        assert False, "unknown rule accepted"
+    except ValueError:
+        pass
+
+
+def test_duplicate_by_impossible_travel_and_by_two_vehicles_in_view():
+    chk = PlateChecker(_registry(), camera=("KL camera", *KL))
+    a = chk.check("WA1234B", when=NOW, vtype="Car")             # Johor Bahru 07:45 -> KL 08:00: ~1200 km/h
+    assert _codes(a) == [DUPLICATE] and "Johor Bahru" in a[0].message
+    assert chk.check("WA1234B", when=datetime(2026, 10, 14, 12, 0), vtype="Car") == []   # 4 h later: fine
+    assert check_travel(NOW, KL, [Sighting("X1", NOW, "same site", 3.1395, 101.6870)]) is None
+    a = chk.check("WXY1234", when=NOW, coexisting_tracks=[7, 3])
+    assert _codes(a) == [DUPLICATE, UNMATCHED] and "#3, #7" in a[0].message
+
+
+def test_colour_estimate_and_tolerant_colour_check():
+    solid = lambda bgr: np.full((80, 120, 3), bgr, np.uint8)
+    assert estimate_colour(solid((40, 40, 200))) == "Red"
+    assert estimate_colour(solid((200, 90, 30))) == "Blue"
+    assert estimate_colour(solid((245, 245, 245))) == "White"
+    assert estimate_colour(solid((20, 20, 20))) == "Black"
+    car = solid((40, 40, 200))
+    car[40:60, 30:90] = 15                                      # black grille / windows: body colour still wins
+    assert estimate_colour(car) == "Red"
+    assert estimate_colour(np.zeros((4, 4, 3), np.uint8)) is None
+    chk = PlateChecker(_registry(), check_colour=True)
+    assert chk.check("WA1234B", when=NOW, vtype="Car", colour="White") == []        # silver ~ white
+    assert _codes(chk.check("WA1234B", when=NOW, vtype="Car", colour="Red")) == [TYPE_MISMATCH]
+    assert PlateChecker(_registry()).check("WA1234B", when=NOW, vtype="Car", colour="Red") == []   # off by default
+
+
+def test_demo_registry_never_flags_a_real_plate():
+    """The repo is public: every real plate in alpr/gt is a neutral placeholder no rule can flag, and
+    every fictitious record uses the X series (no state uses X)."""
+    reg = build_demo_registry(":memory:")
+    chk = PlateChecker(reg, check_colour=True, camera=("demo", *KL))
+    plates = real_plates()
+    assert len(plates) > 100 and not any(p.startswith("X") for p in plates)
+    for p in plates:
+        for vtype in ("Car", "Motorcycle", "Bus", "Truck"):
+            assert chk.check(p, when=datetime(2099, 1, 1), vtype=vtype, colour="Red") == [], (p, vtype)
+    fictitious = [r[0] for r in reg.db.execute("SELECT plate FROM vehicles WHERE simulated = 1")]
+    assert len(fictitious) >= 300 and all(p.startswith("X") for p in fictitious)
+    assert not any(edit_distance(f, p) <= 1 for f in fictitious for p in plates)   # a misread cannot hit one
+    assert chk.check("VCR1587", when=NOW, vtype="Car") == []                    # demo misread of VCH 1587
+    assert _codes(chk.check("XSB2002", when=NOW, vtype="Car")) == [BLACKLIST]
+    assert _codes(chk.check("XSA1001", when=NOW, vtype="Car")) == [EXPIRED, TYPE_MISMATCH]
+    assert _codes(chk.check("XSE5005", when=NOW, vtype="Car")) == [UNMATCHED]
+    assert _codes(chk.check("XSD4004", when=datetime(2026, 10, 14, 8, 2), vtype="Car")) == [DUPLICATE]
+
+
+def _bare_pipeline(**cfg):
+    """An AlprPipeline with only the plate-log / registry state (no models)."""
+    from alpr.pipeline import AlprPipeline
+    p = AlprPipeline.__new__(AlprPipeline)
+    p.cfg, p.fps, p.log = AlprConfig(**cfg), 30.0, []
+    p.checker, p.clock0 = PlateChecker(_registry()), NOW
+    p._reset_apart()
+    p.states, p._sim_pending = {}, list(p.cfg.registry_sim_events)
+    return p
+
+
+def _car_track():
+    from alpr.pipeline import TrackState
+    st = TrackState(1, 1)
+    st.cls_conf[2] = 1.0
+    return st
+
+
+def test_two_vehicles_in_view_with_one_plate_are_two_entries_and_a_duplicate():
+    p, st1, st2 = _bare_pipeline(), _car_track(), _car_track()
+    res = PlateResult("WA 1234 B", "WA1234B", 0.95, 10, CONFIRMED)
+    boxes = {1: [0, 0, 100, 100], 2: [300, 0, 400, 100]}               # side by side
+    for idx in range(1, 10):
+        p._update_log(1, st1, res, idx, boxes)
+        p._update_log(2, st2, res, idx, boxes)
+    assert len(p.log) == 2 and [sorted(e.track_ids) for e in p.log] == [[1], [2]]
+    assert all(_codes(e.alerts) == [DUPLICATE] for e in p.log)
+
+
+def test_reacquired_or_double_boxed_vehicle_is_still_one_entry():
+    res = PlateResult("WA 1234 B", "WA1234B", 0.95, 10, CONFIRMED)
+    p, st1, st2 = _bare_pipeline(), _car_track(), _car_track()
+    p._update_log(1, st1, res, 1, {1: [0, 0, 100, 100]})
+    p._update_log(2, st2, res, 40, {2: [0, 0, 100, 100]})                # track 1 lost, vehicle re-acquired
+    assert len(p.log) == 1 and p.log[0].track_ids == {1, 2} and p.log[0].alerts == []
+    p, st1, st2 = _bare_pipeline(), _car_track(), _car_track()
+    boxes = {1: [0, 0, 100, 100], 2: [10, 10, 90, 95]}                 # two boxes on one vehicle
+    for idx in range(1, 10):
+        p._update_log(1, st1, res, idx, boxes)
+        p._update_log(2, st2, res, idx, boxes)
+    assert len(p.log) == 1 and p.log[0].alerts == []
+
+
+def test_passing_misread_does_not_raise_an_alert():
+    p, st = _bare_pipeline(), _car_track()
+    p._update_log(1, st, PlateResult("WA 1234 B", "WA1234B", 0.95, 10, CONFIRMED), 1, {1: [0, 0, 100, 100]})
+    p._update_log(1, st, PlateResult("PKA 7", "PKA7", 0.5, 12, TENTATIVE), 2, {1: [0, 0, 100, 100]})
+    assert p.log[0].result.compact == "PKA7" and p.log[0].alerts == []          # not CONFIRMED: not checked
+    p._update_log(1, st, PlateResult("PKA 7", "PKA7", 0.9, 14, CONFIRMED), 3, {1: [0, 0, 100, 100]})
+    assert _codes(p.log[0].alerts) == [UNMATCHED]
+
+
+def test_simulated_events_are_logged_apart_from_camera_plates():
+    p = _bare_pipeline(registry_sim_events=[{"at_sec": 1.0, "plate": "BMW 319", "vtype": "Car"}])
+    p._inject_sim_events(15)                                            # 0.5 s: not yet
+    assert p.log == []
+    p._inject_sim_events(30)
+    e, = p.log
+    assert e.simulated and e.result.text == "BMW 319" and _codes(e.alerts) == [BLACKLIST]
+    assert e.crop is not None and e.crop.shape[0] == 46                 # synthetic plate thumbnail
+    assert p.summary() == [] and p.simulated_events()[0]["alerts"][0]["code"] == BLACKLIST
+
+
+def test_dashboard_renders_alerts():
+    from alpr.hud import render_dashboard
+    from alpr.pipeline import LogEntry
+    from alpr.registry import Alert
+    cfg = AlprConfig(hud_mode="dashboard", count_line_y=0.5)
+    blk = Alert(BLACKLIST, "high", "SIMULATED: reported stolen")
+    res = PlateResult("WA 1234 B", "WA1234B", 0.95, 10, CONFIRMED)
+    vehicles = [{"track_id": 1, "box": [100, 100, 300, 300], "vtype": "Car", "plate_box": None, "result": res,
+                 "alerts": [blk]}]
+    log = [LogEntry(res, "Car", "Kuala Lumpur", 1, 5, {1}, alerts=[blk]),
+           LogEntry(res, "Car", "", 2, 4, simulated=True, alerts=[blk])]
+    stats = {"fps": 5.0, "fps_video": 30.0, "time_sec": 1.0, "count": 0, "by_type": {}, "rate_per_min": 0.0,
+             "plates": 1, "confirmed": 1, "alerts": 2}
+    out = render_dashboard(np.full((480, 640, 3), 90, np.uint8), vehicles, log, stats, cfg)
+    assert out.shape == (1080, 1920, 3)
+    b, g, r = (out[..., k].astype(int) for k in range(3))
+    red = (r > 200) & (g < 110) & (b < 110)                             # high-alert red (system red)
+    assert red[:, 1468:].any() and red[:, :1444].any()                  # log card pill + vehicle alert pill
+
+
+def test_rounded_masks_are_antialiased_and_bounded():
+    from alpr.hud import _ring_mask, _rr_mask, fill
+    m = _rr_mask(40, 20, 8)
+    assert m.shape == (20, 40) and m[10, 20] == 1.0 and m[0, 0] == 0.0
+    assert 0.0 < m[1, 3] < 1.0                                          # soft corner edge
+    ring = _ring_mask(40, 20, 8, 2)
+    assert ring[10, 20] == 0.0 and ring[10, 0] > 0.9
+    img = np.zeros((30, 30, 3), np.uint8)
+    fill(img, (-10, -10, 15, 15), 4, (255, 0, 0))                       # partly outside: clipped, no error
+    assert img[5, 5, 2] == 255 and img[20, 20].sum() == 0
+
+
+def test_video_evaluate_scores_expected_alerts():
+    gts = ["XSA1001", "VCV155", "XSE5005"]
+    want = [{"EXPIRED", "TYPE_MISMATCH"}, set(), {"UNMATCHED"}]
+    preds = ["XSA1001", "VCV155", "XSE5005"]
+    got = [{"EXPIRED", "TYPE_MISMATCH"}, {"UNMATCHED"}, set()]       # a real plate flagged, a violation missed
+    a = evaluate(preds, gts, (), got, want)["alerts"]
+    assert a == {"violations": 2, "violations_caught": 1, "valid_plates": 1, "false_alerts": 1,
+                 "false_alerts_on_unmatched": 0}
+
+
+def test_demo_registry_rebuilds_when_real_plates_change():
+    import tempfile
+    from alpr import registry as R
+    d = tempfile.mkdtemp()
+    gt = os.path.join(d, "gt")
+    os.makedirs(gt)
+    with open(os.path.join(gt, "a.txt"), "w", encoding="utf-8") as f:
+        f.write("WA1234B\n")
+    old_dir, R.GT_DIR = R.GT_DIR, gt
+    try:
+        db = os.path.join(d, "reg.db")
+        R.build_demo_registry(db, n_fictitious=5).close()
+        with open(os.path.join(gt, "a.txt"), "a", encoding="utf-8") as f:
+            f.write("VCV155\n")                                       # a new real plate is labelled
+        reg = R.Registry.open(db)                                      # -> rebuilt automatically
+        assert reg.lookup("VCV155") is not None and not reg.lookup("VCV155").simulated
+        reg.close()
+    finally:
+        R.GT_DIR = old_dir
 
 
 if __name__ == "__main__":

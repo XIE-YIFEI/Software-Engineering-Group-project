@@ -48,13 +48,24 @@ common:
                                      # (TENTATIVE readings still show, in amber, on the live vehicle label)
   count_line_y: 0.0                  # traffic-flow counting line, fraction of frame height (0 = off)
 
+  # Plate verification (alpr/registry.py). The registry is SIMULATED: fictitious X-plates plus neutral
+  # placeholders (no alerts possible) for every real plate in alpr/gt. Build/rebuild it with
+  #   python -m alpr.registry --make-demo        (also built automatically when the file is missing)
+  registry_enabled: false
+  registry_path: data/registry/demo_registry.db
+  registry_rules: [UNMATCHED, EXPIRED, ILLEGAL_FORMAT, BLACKLIST, TYPE_MISMATCH, DUPLICATE]
+  registry_check_colour: false       # TYPE_MISMATCH also compares a rough HSV body colour (off: lighting-sensitive)
+  registry_max_speed_kmh: 250        # DUPLICATE: same plate at two cameras needing a faster trip = cloned plate
+  registry_misread_tolerance: true   # one character off a registered plate = probable OCR misread, no UNMATCHED
+                                     # (seen on the demo: VCH 1587 briefly confirmed as VCR 1587)
+
   # HUD: "lead" = AR card on the main target (dashcam); "dashboard" = CCTV layout with plate log
   hud_mode: lead
   # HUD lead target
   lane_weight: 0.6
   lead_hysteresis: 1.25
   min_lead_w_frac: 0.104
-  hud_title: "SECS AI VISION  |  MALAYSIA ALPR"
+  hud_title: "SECS Vision · Malaysia ALPR"
 
 profiles:
   # Static images (python run_image.py / python -m alpr.eval_images). The plate detector runs on the
@@ -77,7 +88,7 @@ profiles:
     out: outputs/malaysia_tracked_hud_10s.mp4
     min_ground_y_frac: 0.59
     ignore_zones: [[0.0, 0.82, 0.26, 1.0]]   # channel watermark, bottom-left of this clip
-    hud_title: "SECS AI VISION  |  MALAYSIA ALPR HUD"
+    hud_title: "SECS Vision · Malaysia ALPR"
 
   # Roadside ANPR camera, Malaysia (LILIN "INTEL AIDA ANPR TESTING", youtube.com/watch?v=raQOCJ_wzKE).
   # The clip is a screen recording of the vendor's NVR UI: frame_crop keeps only the camera image and
@@ -91,7 +102,54 @@ profiles:
     count_line_y: 0.62
     min_votes: 6                       # 30 FPS, a read every 2nd frame: confirm after ~0.4 s of readings
     hud_mode: dashboard
-    hud_title: "SECS AI VISION  |  MALAYSIA ROADSIDE ANPR"
+    hud_title: "SECS Vision · Malaysia Roadside ANPR"
+    registry_enabled: true
+    video_start_time: "2026-10-14T08:00:00"   # notional clock for the demo (road-tax / travel checks)
+    camera_name: "KL roadside ANPR (demo)"
+    camera_latlon: [3.1390, 101.6869]
+    # SIMULATED events: fictitious plates (X-series, see alpr/registry.py DEMO_SCENARIOS) added to the
+    # plate log at these video seconds to demonstrate the alerts. They are marked SIMULATED on the
+    # dashboard and kept apart from the camera's plates in *.plates.json. Real vehicles are never flagged.
+    registry_sim_events:
+      - {at_sec: 103.0, plate: XSB2002, vtype: Car}      # BLACKLIST (reported stolen)
+      - {at_sec: 110.0, plate: XSA1001, vtype: Car}      # EXPIRED road tax + TYPE_MISMATCH (registered motorcycle)
+      - {at_sec: 117.0, plate: XSE5005, vtype: Car}      # UNMATCHED (no record)
+      - {at_sec: 124.0, plate: XSD4004, vtype: Car}      # DUPLICATE (seen in Johor Bahru 17 min earlier)
+
+  # Violation demo: the whole roadside clip (155 s) with SIMULATED violations ON actual vehicles.
+  # data/videos/malaysia_road_violations_SIMULATED.mp4 is made by `python -m alpr.simulate`
+  # (alpr/simulation.yaml): 7 vehicles carry digitally inserted fictitious plates (X-series or
+  # malformed), every other plate is real. The pipeline does not know which ones were altered.
+  malaysia_road_violations:
+    source: data/videos/malaysia_road_violations_SIMULATED.mp4
+    start_sec: 0.0
+    duration: 0.0
+    out: outputs/malaysia_road_violations.mp4
+    count_line_y: 0.62
+    min_votes: 6
+    hud_mode: dashboard
+    hud_title: "SECS Vision · Malaysia Roadside ANPR · Violation Check"
+    hud_banner: "Simulation · 7 vehicles carry digitally inserted fictitious plates (X-series or malformed). All other plates are real."
+    summary_sec: 8.0
+    registry_enabled: true
+    video_start_time: "2026-10-14T08:00:00"
+    camera_name: "KL roadside ANPR (demo)"
+    camera_latlon: [3.1390, 101.6869]
+
+  # Second scene: guardhouse barrier gate (YouTube "License plate recognition system for guard house",
+  # LEAF SMART COMMUNITY, youtube.com/watch?v=eNIGPl-W2II). Same model and thresholds as
+  # malaysia_road_anpr; only the scene geometry differs. frame_crop drops the top strip with the
+  # vendor's own plate overlay and logos. Registry checks stay off: every vehicle here is real.
+  malaysia_guardhouse:
+    source: data/videos/malaysia_guardhouse_lpr.mp4
+    start_sec: 66.0
+    duration: 30.0
+    out: outputs/malaysia_guardhouse_30s.mp4
+    frame_crop: [0.0, 0.145, 1.0, 1.0]
+    count_line_y: 0.72                 # vehicles leaving through the gate cross it
+    min_votes: 6
+    hud_mode: dashboard
+    hud_title: "SECS Vision · Malaysia Guardhouse Gate LPR"
 
   malaysia_cctv_urban:
     source: data/videos/malaysia_kl_city_cctv.mp4
@@ -106,7 +164,7 @@ profiles:
     plate_conf: 0.15
     lane_weight: 0.0
     min_lead_w_frac: 0.0
-    hud_title: "SECS AI VISION  |  KUALA LUMPUR BUKIT BINTANG CCTV"
+    hud_title: "SECS Vision · Kuala Lumpur Bukit Bintang CCTV"
 
   malaysia_cctv_highway:
     source: data/videos/candidates/malaysia_sgbuloh_overhead.mp4
@@ -121,7 +179,7 @@ profiles:
     plate_conf: 0.15
     lane_weight: 0.0
     min_lead_w_frac: 0.0
-    hud_title: "SECS AI VISION  |  PLUS HIGHWAY OVERHEAD GANTRY CCTV"
+    hud_title: "SECS Vision · PLUS Highway Overhead Gantry CCTV"
 
   malaysia_cctv_junction:
     source: data/videos/candidates/malaysia_kotabharu_traffic.mp4
@@ -136,7 +194,7 @@ profiles:
     plate_conf: 0.15
     lane_weight: 0.0
     min_lead_w_frac: 0.0
-    hud_title: "SECS AI VISION  |  KOTA BHARU INTERSECTION CCTV"
+    hud_title: "SECS Vision · Kota Bharu Intersection CCTV"
 
   cctv:
     source: data/videos/anpr_sample_clear.mp4
@@ -154,4 +212,4 @@ profiles:
     plate_det_interval: 1
     lane_weight: 0.0
     min_lead_w_frac: 0.0
-    hud_title: "SECS AI VISION  |  HIGHWAY ANPR TELEMETRY"
+    hud_title: "SECS Vision · Highway ANPR"

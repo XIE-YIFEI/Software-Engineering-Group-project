@@ -1,0 +1,66 @@
+{
+  "source": "data/videos/malaysia_guardhouse_lpr.mp4",
+  "profile": "malaysia_guardhouse",
+  "fps": 30.0,
+  "frames": 900,
+  "window_sec": [
+    66.0,
+    96.0
+  ],
+  "plates": [
+    {
+      "plate": "JPP 3473",
+      "compact": "JPP3473",
+      "confidence": 0.9999,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "valid_format": true,
+      "vtype": "Truck",
+      "region": "Johor",
+      "track_ids": [
+        1
+      ],
+      "first_frame": 1,
+      "last_frame": 446,
+      "first_sec": 66.03,
+      "last_sec": 80.87
+    },
+    {
+      "plate": "JMT 8577",
+      "compact": "JMT8577",
+      "confidence": 0.7217,
+      "votes": 13,
+      "status": "CONFIRMED",
+      "valid_format": true,
+      "vtype": "Truck",
+      "region": "Johor",
+      "track_ids": [
+        87
+      ],
+      "first_frame": 276,
+      "last_frame": 900,
+      "first_sec": 75.2,
+      "last_sec": 96.0
+    }
+  ],
+  "flow": {
+    "count_line_y": 0.72,
+    "total": 1,
+    "by_type": {
+      "Truck": 1
+    },
+    "per_10s": [
+      {
+        "t_start": 66.0,
+        "t_end": 76.0,
+        "total": 0
+      },
+      {
+        "t_start": 76.0,
+        "t_end": 86.0,
+        "total": 1,
+        "Truck": 1
+      }
+    ]
+  }
+}
