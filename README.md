@@ -1,4 +1,4 @@
-> **🚗 Malaysian ALPR & Traffic Flow Monitoring (group project, `haiwen` branch)** — licence-plate recognition
+> **🚗 Malaysian ALPR & Traffic Flow Monitoring (group project)** — licence-plate recognition
 > for images and CCTV video, plate verification, traffic-flow and lane-level monitoring: see
 > **[ALPR_INTRODUCTION.md](ALPR_INTRODUCTION.md)** (English + Chinese) and the team guide **[TEAM_GUIDE_EN.md](TEAM_GUIDE_EN.md)**.
 >
