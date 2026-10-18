@@ -16,13 +16,19 @@ CONFIRMED reading or vehicle type changes, and its alerts go to the dashboard an
 vehicles in view at once, clearly apart, are never merged into one entry; if they carry the identical
 plate that is a DUPLICATE (cloned plate). ``registry_sim_events`` adds SIMULATED fictitious sightings
 to the log (demo only; kept apart from the camera's plates in the JSON).
+
+Lanes (``lanes`` in the profile, alpr/lanes.py + alpr/behaviour.py): every vehicle gets a smoothed
+lane, the count line counts per lane, LaneMetrics adds occupancy and density, and the behaviour rules
+raise lane events tied to the vehicle's plate log entry (its plate, once read). Violations of camera
+vehicles are withheld on public footage; ``behaviour_sim_tracks`` adds SIMULATED vehicles that show
+the violation rules (never counted in the flow).
 """
 from __future__ import annotations
 
 import json
 import os
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set, Tuple
@@ -31,10 +37,12 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
+from .behaviour import BehaviourMonitor, LaneEvent, RuleParams, SimulatedTraffic
 from .config import AlprConfig
 from .evaluate import edit_distance
-from .flow import LineCounter
+from .flow import LaneMetrics, LineCounter
 from .hud import plate_image, render_dashboard, render_hud, render_summary
+from .lanes import Calibration, LaneMap
 from .lead import LeadSelector
 from .ocr import make_ocr
 from .plates import normalize, parse_plate
@@ -121,6 +129,73 @@ class AlprPipeline:
         self._sim_pending = sorted(cfg.registry_sim_events, key=lambda ev: float(ev["at_sec"])) if self.checker else []
         self._reset_apart()
         self._last_t: Optional[float] = None
+        # lanes are built on the first frame (they need the frame size)
+        self.lane_map: Optional[LaneMap] = None
+        self.calibration: Optional[Calibration] = None
+        self.behaviour: Optional[BehaviourMonitor] = None
+        self.lane_metrics: Optional[LaneMetrics] = None
+        self.sim_traffic: Optional[SimulatedTraffic] = None
+
+    def _init_lanes(self, w: int, h: int) -> None:
+        cfg = self.cfg
+        self.lane_map = LaneMap.from_config(cfg.lanes, cfg.solid_lines, w, h, cfg.lane_vanishing_point,
+                                            cfg.lane_ref_shift)
+        self.calibration = Calibration.from_config(cfg.calibration, w, h) if cfg.calibration else None
+        self.behaviour = BehaviourMonitor(self.lane_map, self.fps, RuleParams.from_config(cfg), self.calibration, h)
+        zone = {}
+        if self.calibration is not None:                       # lane zone length (m) for density in veh/km
+            for lane in self.lane_map.lanes:
+                y1, y2 = lane.y_range()
+                a, b = lane.span_at(y1 + 1), lane.span_at(y2 - 1)
+                if a and b:
+                    zone[lane.name] = self.calibration.distance(((a[0] + a[1]) / 2, y1 + 1), ((b[0] + b[1]) / 2, y2 - 1))
+        self.lane_metrics = LaneMetrics(self.lane_map.names(), self.fps, zone)
+        self.sim_traffic = (SimulatedTraffic(cfg.behaviour_sim_tracks, self.calibration, w, h, self.fps, cfg.start_sec)
+                            if cfg.behaviour_sim_tracks else None)
+
+    def _lanes_frame(self, vehicles: List[Dict], idx: int, h: int) -> List[Dict]:
+        """Lane + behaviour update for this frame. Sets v["lane"] on every vehicle and returns the
+        SIMULATED vehicles of this frame (drawn, checked by the rules, never counted)."""
+        sims = self.sim_traffic.vehicles(idx) if self.sim_traffic is not None else []
+        for s in sims:
+            s["result"] = PlateResult(s["plate"], normalize(s["plate"]), 1.0, 0, CONFIRMED) if s["plate"] else None
+            s.update(plate_box=None, crop=None, alerts=[])
+        new = self.behaviour.update(idx, vehicles + sims)
+        plates = self._plate_by_track()
+        for ev in new:
+            ev.plate = next((s["plate"] for s in sims if s["track_id"] == ev.track_id), "") if ev.simulated \
+                else ("" if ev.withheld else plates.get(ev.track_id, ""))
+            t = self.cfg.start_sec + ev.frame / self.fps
+            tag = " [SIMULATED]" if ev.simulated else (" [withheld: camera vehicle, public footage]" if ev.withheld else "")
+            print(f"  EVENT {t:6.1f}s  {ev.code:<11} {ev.lane:<5} #{ev.track_id:<5} {ev.message}{tag}")
+        line = self.cfg.count_line_y * h
+        occupied, in_zone = {}, {}
+        for v in vehicles + sims:
+            v["lane"] = self.behaviour.lane_of(v["track_id"])
+        for v in vehicles:
+            raw = self.lane_map.lane_at(self.lane_map.ref_point(v["box"]))
+            if raw is not None:
+                in_zone[raw.name] = in_zone.get(raw.name, 0) + 1
+            lane = v["lane"] or (raw.name if raw else None)
+            if lane and v["box"][1] <= line <= v["box"][3]:
+                occupied[lane] = True
+        self.lane_metrics.update(idx, occupied, in_zone)
+        return sims
+
+    def _plate_by_track(self) -> Dict[int, str]:
+        """Track id -> plate text of its plate-log entry (camera vehicles whose plate was read)."""
+        return {t: e.result.text for e in self.log if not e.simulated for t in e.track_ids}
+
+    def lane_events(self) -> List[LaneEvent]:
+        """Visible lane events, plates refreshed (a plate read after the event still links to it)."""
+        if self.behaviour is None:
+            return []
+        plates = self._plate_by_track()
+        evs = self.behaviour.visible_events()
+        for ev in evs:
+            if not ev.simulated and not ev.plate:
+                ev.plate = plates.get(ev.track_id, "")
+        return evs
 
     def _reset_apart(self) -> None:
         """Co-visibility bookkeeping: for each track pair, in how many frames both were in view and
@@ -394,7 +469,10 @@ class AlprPipeline:
             self.fps_ema = 1.0 / dt if self.fps_ema == 0 else 0.9 * self.fps_ema + 0.1 / dt
         self._last_t = now
         h, w = frame.shape[:2]
+        if self.cfg.lanes and self.lane_map is None:
+            self._init_lanes(w, h)
         vehicles = self._track_vehicles(frame, idx)
+        sims = self._lanes_frame(vehicles, idx, h) if self.lane_map is not None else []
         boxes = {v["track_id"]: v["box"] for v in vehicles}
         # every pair of vehicles in view at once, clearly apart: two vehicles, even if one of them only
         # gets its plate read later (a cloned plate must not be merged as "the same car re-acquired")
@@ -417,20 +495,92 @@ class AlprPipeline:
             v["crop"] = st.best_crop
             self._update_log(v["track_id"], st, v["result"], idx, boxes)
             if self.counter is not None:
-                self.counter.update(v["track_id"], v["box"], st.vtype, idx, h)
+                lane = None
+                if self.lane_map is not None:
+                    raw = self.lane_map.lane_at(self.lane_map.ref_point(v["box"]))
+                    lane = v.get("lane") or (raw.name if raw else None)
+                self.counter.update(v["track_id"], v["box"], st.vtype, idx, h, lane=lane)
         self._inject_sim_events(idx)
         alerts_by_track = {t: e.alerts for e in self.log for t in e.track_ids}
         for v in vehicles:
             v["alerts"] = alerts_by_track.get(v["track_id"], [])
+        if self.behaviour is not None:                       # recent lane events, for the vehicle labels
+            recent = [e for e in self.behaviour.visible_events() if idx - max(e.frame, e.emitted) <= 3 * self.fps]
+            for v in vehicles + sims:
+                v["events"] = [e for e in recent if e.track_id == v["track_id"]]
 
         if self.cfg.hud_mode == "dashboard":
-            annotated = render_dashboard(frame, vehicles, self.log, self._stats(idx), self.cfg)
+            annotated = render_dashboard(frame, vehicles + sims, self.log, self._stats(idx), self.cfg,
+                                         lanes=self._lane_view(idx))
         else:
             lead_id = self.lead.pick(vehicles, w, h)
             lead = next((v for v in vehicles if v["track_id"] == lead_id), None)
             secondary = [v for v in vehicles if v is not lead]
             annotated = render_hud(frame.copy(), lead, secondary, self.fps_ema, len(self.states), self.cfg.hud_title)
         return annotated, vehicles
+
+    def _lane_view(self, idx: int, session: bool = False) -> Optional[Dict]:
+        """What the dashboard needs about the lanes: geometry, per-lane flow, events (None = no lanes).
+        Live: rates over the last minute, occupancy / density / speed over the last 30 s / 5 vehicles.
+        session=True (end card): everything over the whole session."""
+        if self.lane_map is None:
+            return None
+        c = self.counter
+        by_lane = c.by_lane() if c else {}
+        win = max(1, idx) / self.fps if session else 30.0
+        rows = []
+        for lane in self.lane_map.lanes:
+            dens, unit = self.lane_metrics.density(lane.name, window_sec=win)
+            sp = self.behaviour.crossing_speeds(lane.name)
+            sp = sp if session else sp[-5:]
+            n = by_lane.get(lane.name, 0)
+            rows.append({"name": lane.name, "group": lane.group, "direction": lane.direction, "polygon": lane.polygon,
+                         "count": n, "rate": c.rate_per_min(idx, self.fps, lane=lane.name) if c else 0.0,
+                         "veh_per_min": n * 60.0 / win if session else None,
+                         "occupancy": self.lane_metrics.occupancy(lane.name, window_sec=win), "density": dens,
+                         "density_unit": unit, "speed": sum(sp) / len(sp) if sp else None})
+        if not session:
+            for r in rows:
+                r.pop("veh_per_min")
+        return {"map": self.lane_map, "rows": rows, "events": self.lane_events(),
+                "withheld": self.behaviour.withheld_counts(), "calibrated": self.calibration is not None,
+                "simulated": self.sim_traffic is not None, "fps": self.fps, "t0": self.cfg.start_sec}
+
+    def lane_report(self) -> Optional[Dict]:
+        """Lanes section of the results JSON: per-lane totals, crossings (for alpr.lane_eval), per-lane
+        10 s time series, visible events with plates, withheld counts, calibration checks."""
+        if self.lane_map is None:
+            return None
+        c = self.counter
+        fps, t0 = self.fps, self.cfg.start_sec
+        speeds = {tid: v for tid, (v, _) in self.behaviour.final_speed.items() if tid not in self.behaviour.sim_ids}
+        n_frames = max(1, len(self.lane_metrics._frames))
+        per_lane = {}
+        for lane in self.lane_map.lanes:
+            dens, unit = self.lane_metrics.density(lane.name, window_sec=n_frames / fps)
+            vs = [speeds[x.track_id] for x in (c.crossings if c else []) if x.lane == lane.name and x.track_id in speeds]
+            per_lane[lane.name] = {
+                "group": lane.group, "direction": lane.direction,
+                "count": sum(1 for x in (c.crossings if c else []) if x.lane == lane.name),
+                "by_type": dict(Counter(x.vtype for x in (c.crossings if c else []) if x.lane == lane.name)),
+                "veh_per_min": round(sum(1 for x in (c.crossings if c else []) if x.lane == lane.name)
+                                     * 60.0 * fps / n_frames, 2),
+                "occupancy": round(self.lane_metrics.occupancy(lane.name, window_sec=n_frames / fps), 3),
+                "density": round(dens, 2), "density_unit": unit,
+                "zone_length_m": round(self.lane_metrics.zone_len_m.get(lane.name, 0.0), 1) or None,
+                "mean_speed_kmh": round(sum(vs) / len(vs), 1) if vs else None}
+        rep = {"lanes": [l.name for l in self.lane_map.lanes], "count_line_y": self.cfg.count_line_y,
+               "ref_shift": self.lane_map.ref_shift, "per_lane": per_lane,
+               "crossings": [{"time_sec": round(t0 + x.frame / fps, 2), "lane": x.lane or "", "vtype": x.vtype,
+                              "track_id": x.track_id, "direction": x.direction} for x in (c.crossings if c else [])],
+               "per_10s": self.lane_metrics.time_series(c, 10.0, t0, speeds) if c else {},
+               "events": [e.to_dict(fps, t0) for e in self.lane_events()],
+               "withheld_violations": self.behaviour.withheld_counts(),
+               "withheld_note": "violations of camera vehicles on public footage: counted, not attributed"}
+        if self.calibration is not None:
+            rep["calibration"] = {"note": "speeds in km/h with 1-sigma error; scale from lane width 3.5 m + "
+                                          "measured dash cycle", "speed_zone_y": list(self.cfg.speed_zone_y)}
+        return rep
 
     def _stats(self, idx: int) -> Dict:
         c = self.counter
@@ -531,9 +681,11 @@ def run(cfg: AlprConfig) -> int:
         fx1, fy1, fx2, fy2 = cfg.frame_crop
         crop = (int(fx1 * width), int(fy1 * height), int(fx2 * width), int(fy2 * height))
         width, height = crop[2] - crop[0], crop[3] - crop[1]
-    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-    start = int(cfg.start_sec * fps)
-    total = int(cfg.duration * fps) if cfg.duration > 0 else int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) - start
+    fps_in = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    step = max(1, int(cfg.frame_step))
+    fps = fps_in / step                                      # processed frames per video second
+    start = int(cfg.start_sec * fps_in)
+    total = (int(cfg.duration * fps_in) if cfg.duration > 0 else int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) - start) // step
     cap.set(cv2.CAP_PROP_POS_FRAMES, start)
 
     os.makedirs(os.path.dirname(cfg.out) or ".", exist_ok=True)
@@ -541,20 +693,23 @@ def run(cfg: AlprConfig) -> int:
     writer = VideoOut(cfg.out, fps, out_size)
 
     print("=" * 64)
-    print(f"SECS ALPR  profile={cfg.profile}  {width}x{height} @ {fps:.1f} FPS  ocr={cfg.ocr_backend}")
+    print(f"SECS ALPR  profile={cfg.profile}  {width}x{height} @ {fps:.1f} FPS"
+          + (f" (every {step}th of {fps_in:.0f})" if step > 1 else "") + f"  ocr={cfg.ocr_backend}")
     print(f"window {cfg.start_sec}s -> {cfg.start_sec + total / fps:.1f}s ({total} frames) -> {cfg.out}")
     print("=" * 64)
 
     pipe = AlprPipeline(cfg, fps=fps)
-    t_start, n, last = time.time(), 0, None
+    t_start, n, last_frame = time.time(), 0, None
     while n < total:
         ok, frame = cap.read()
         if not ok:
             break
+        for _ in range(step - 1):                              # skipped frames: decode-free grab
+            cap.grab()
         n += 1
         if crop:
             frame = np.ascontiguousarray(frame[crop[1]:crop[3], crop[0]:crop[2]])
-        last = frame
+        last_frame = frame
         annotated, vehicles = pipe.process_frame(frame, n)
         writer.write(annotated)
         if n % 50 == 0:
@@ -564,12 +719,13 @@ def run(cfg: AlprConfig) -> int:
                   f"plates {st['plates']} | last {last.text + ' ' + last.status if last else '-'}")
     cap.release()
     if cfg.hud_mode == "dashboard" and cfg.summary_sec > 0:      # end card: every vehicle + verdict
-        card = render_summary(pipe.log, pipe._stats(n), cfg, frame=last)
+        card = render_summary(pipe.log, pipe._stats(n), cfg, frame=last_frame, lanes=pipe._lane_view(n, session=True))
         for _ in range(int(cfg.summary_sec * fps)):
             writer.write(card)
     writer.close()
     elapsed = max(1e-3, time.time() - t_start)
 
+    start = int(cfg.start_sec * fps)                           # in processed frames
     rows = pipe.summary(start)
     report = {"source": cfg.source, "profile": cfg.profile, "fps": fps, "frames": n,
               "window_sec": [cfg.start_sec, round(cfg.start_sec + n / fps, 2)], "plates": rows}
@@ -584,6 +740,9 @@ def run(cfg: AlprConfig) -> int:
                               "alerts": sum(len(r["alerts"]) for r in rows),
                               "simulated_alerts": sum(len(ev["alerts"]) for ev in sims)}
         report["simulated_events"] = sims
+    lanes = pipe.lane_report()
+    if lanes is not None:
+        report["lanes"] = lanes
     json_path = os.path.splitext(cfg.out)[0] + ".plates.json"
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
@@ -600,6 +759,12 @@ def run(cfg: AlprConfig) -> int:
               + ("  ".join(f"! {a['code']}: {a['message']}" for a in ev["alerts"]) or "no alerts"))
     if pipe.counter is not None:
         print(f"flow: {pipe.counter.total} vehicles crossed the line {pipe.counter.by_type()}")
+    if lanes is not None:
+        for name, r in lanes["per_lane"].items():
+            sp = f"  {r['mean_speed_kmh']:.0f} km/h" if r["mean_speed_kmh"] else ""
+            print(f"  lane {name:<5} {r['count']:>4} veh  {r['veh_per_min']:5.1f}/min  occupancy {r['occupancy']:.0%}  "
+                  f"density {r['density']:.1f} {r['density_unit']}{sp}")
+        print(f"lane events shown: {len(lanes['events'])}  withheld (camera vehicles): {lanes['withheld_violations']}")
     print(f"results -> {json_path}")
     print("=" * 64)
     return 0

@@ -325,8 +325,25 @@ def _status_rgb(res: Optional[PlateResult]):
     return _STATUS_RGB[res.status] if res else GRAY
 
 
+_EVENT_RGB = {"info": BLUE, "hazard": ORANGE, "violation": RED}
+
+
+def event_text(ev) -> str:
+    """Short pill text for a lane event: 'Lane change In2 → In3', 'Speeding 96 km/h', ..."""
+    from .behaviour import EVENT_TITLE, LANE_CHANGE, SPEEDING, TAILGATING
+    title = EVENT_TITLE.get(ev.code, ev.code.replace("_", " ").capitalize())
+    if ev.code == LANE_CHANGE and ev.from_lane:
+        return f"{title} {ev.from_lane} → {ev.lane}"
+    if ev.code == SPEEDING and ev.value is not None:
+        return f"{title} {ev.value:.0f} km/h"
+    if ev.code == TAILGATING and ev.value is not None:
+        return f"{title} {ev.value:.2f} s"
+    return f"{title} · {ev.lane}" if ev.lane else title
+
+
 def _draw_vehicles(view: np.ndarray, T: _Text, vehicles: List[Dict], s: float, ox: int, oy: int) -> None:
-    """Rounded vehicle outlines, plate outlines and capsule labels (plate, status dot, alert)."""
+    """Rounded vehicle outlines, plate outlines and capsule labels (plate, status dot, alert, lane event).
+    SIMULATED vehicles (v["simulated"]) are drawn as purple translucent shapes labelled "Simulated"."""
     vh, vw = view.shape[:2]
 
     def P(b):
@@ -338,20 +355,36 @@ def _draw_vehicles(view: np.ndarray, T: _Text, vehicles: List[Dict], s: float, o
     for v in sorted(vehicles, key=lambda v: -(v["box"][2] - v["box"][0]) * (v["box"][3] - v["box"][1])):
         res: Optional[PlateResult] = v.get("result")
         alerts = v.get("alerts") or []
+        events = v.get("events") or []
+        sim = bool(v.get("simulated"))
         x1, y1, x2, y2 = P(v["box"])
-        rgb = _ALERT_RGB[alerts[0].severity] if alerts else (_status_rgb(res) if res else LABEL)
         rad = int(np.clip((x2 - x1) * 0.06, 6, 18))
-        stroke(view, (x1, y1, x2, y2), rad, rgb, 3 if alerts else 2, 0.95 if (res or alerts) else 0.35)
+        if sim:
+            fill(view, (x1, y1, x2, y2), rad, PURPLE, 0.30)
+            stroke(view, (x1, y1, x2, y2), rad, PURPLE, 3, 0.95)
+        else:
+            ev_rgb = _EVENT_RGB[events[-1].severity] if events else None
+            rgb = _ALERT_RGB[alerts[0].severity] if alerts else (ev_rgb or (_status_rgb(res) if res else LABEL))
+            stroke(view, (x1, y1, x2, y2), rad, rgb, 3 if (alerts or events) else 2,
+                   0.95 if (res or alerts or events) else 0.35)
         pb = v.get("plate_box")
         if pb is not None:
             stroke(view, P(pb), 4, (255, 255, 255), 2, 0.9)
-        if res is None and not alerts:
+        if res is None and not alerts and not events and not sim:
             continue                                     # still searching: outline only, no label clutter
-        # label: [alert pill] over [● plate  #id]
+        # label: [alert or event pill] over [● plate  #id]
         text = res.text if res else v["vtype"]
-        dot_rgb = _ALERT_RGB[alerts[0].severity] if alerts else (_status_rgb(res) if res else GRAY)
-        lab_w = int(15 + 18 + f_plate.getlength(text) + 6 + f_id.getlength(f"#{v['track_id']}") + 15)
-        lab_h = 30 + (34 if alerts else 0)
+        extra = "Simulated" if sim else f"#{v['track_id']}"
+        dot_rgb = PURPLE if sim else (_ALERT_RGB[alerts[0].severity] if alerts else (_status_rgb(res) if res else GRAY))
+        top_txt, top_rgb = None, None
+        if alerts:
+            top_txt, top_rgb = _alert_label(alerts), _ALERT_RGB[alerts[0].severity]
+        elif events:
+            top_txt, top_rgb = event_text(events[-1]), _EVENT_RGB[events[-1].severity]
+        lab_w = int(15 + 18 + f_plate.getlength(text) + 6 + f_id.getlength(extra) + 15)
+        if top_txt:
+            lab_w = max(lab_w, int(f_alert.getlength(top_txt) + 30))
+        lab_h = 30 + (34 if top_txt else 0)
         ly = max(4, y1 - lab_h - 6)
         lx = int(np.clip(x1, 4, max(4, vw - lab_w - 4)))
         while ly + lab_h < vh and any(lx < r[2] and r[0] < lx + lab_w and ly < r[3] and r[1] < ly + lab_h
@@ -359,12 +392,11 @@ def _draw_vehicles(view: np.ndarray, T: _Text, vehicles: List[Dict], s: float, o
             ly += 8
         placed.append((lx, ly, lx + lab_w, ly + lab_h))
         y_lab = ly
-        if alerts:
-            _pill(view, _Offset(T, ox, oy), lx, ly, _alert_label(alerts), f_alert,
-                  fg=LABEL, bg=_ALERT_RGB[alerts[0].severity], bg_alpha=0.92, h=28)
+        if top_txt:
+            _pill(view, _Offset(T, ox, oy), lx, ly, top_txt, f_alert, fg=LABEL, bg=top_rgb, bg_alpha=0.92, h=28)
             y_lab = ly + 34
-        _pill(view, _Offset(T, ox, oy), lx, y_lab, text, f_plate, fg=LABEL if res else LABEL2,
-              dot_rgb=dot_rgb, glassy=True, extra=f"#{v['track_id']}", extra_font=f_id)
+        _pill(view, _Offset(T, ox, oy), lx, y_lab, text, f_plate, fg=LABEL if (res or sim) else LABEL2,
+              dot_rgb=dot_rgb, glassy=True, extra=extra, extra_font=f_id)
 
 
 class _Offset:
@@ -388,6 +420,166 @@ def _count_line(view, T, cfg, fh: int, s: float, ox: int, oy: int, count: int) -
     _blend(view, 0, ly - 1, line, (255, 255, 255), 0.55)
     _pill(view, _Offset(T, ox, oy), 14, ly - 40, f"Count line · {count}", _font("semibold", 14),
           dot_rgb=(100, 210, 255), glassy=True, h=30)
+
+
+# ---------------------------------------------------------------------------- lanes
+INDIGO = (94, 92, 230)
+_GROUP_RGB = [BLUE, INDIGO, (100, 210, 255), (172, 142, 104)]
+QUEUE_OCC, DENSE_OCC = 0.45, 0.20          # time occupancy at the count line: queue / dense traffic
+
+
+def lane_state(occupancy: float) -> Tuple[str, tuple]:
+    if occupancy >= QUEUE_OCC:
+        return "Queue", RED
+    if occupancy >= DENSE_OCC:
+        return "Dense", YELLOW
+    return "Free flow", GREEN
+
+
+def _group_rgb(lanes: Dict, group: str):
+    groups = list(dict.fromkeys(r["group"] for r in lanes["rows"]))
+    return _GROUP_RGB[groups.index(group) % len(_GROUP_RGB)] if group in groups else BLUE
+
+
+def _draw_lanes(view: np.ndarray, T: _Text, lanes: Dict, cfg, fh: int, s: float, ox: int, oy: int) -> None:
+    """Lane polygons tinted by their state (free / dense / queue), solid lines, and a capsule per lane
+    on the count line with its count."""
+    vh, vw = view.shape[:2]
+    for r in lanes["rows"]:
+        _, rgb = lane_state(r["occupancy"])
+        pts = np.int32(np.asarray(r["polygon"]) * s)
+        x1, y1 = pts.min(axis=0)
+        x2, y2 = pts.max(axis=0)
+        x1, y1, x2, y2 = max(0, x1), max(0, y1), min(vw, x2 + 1), min(vh, y2 + 1)
+        if x2 <= x1 or y2 <= y1:
+            continue
+        m = np.zeros((y2 - y1, x2 - x1), np.uint8)
+        cv2.fillPoly(m, [pts - [x1, y1]], 255, cv2.LINE_AA)
+        _blend(view, x1, y1, m.astype(np.float32) / 255.0, _bgr(rgb), 0.13)
+        ring = np.zeros_like(m)
+        cv2.polylines(ring, [pts - [x1, y1]], True, 255, 1, cv2.LINE_AA)
+        _blend(view, x1, y1, ring.astype(np.float32) / 255.0, (255, 255, 255), 0.22)
+    lm = lanes["map"]
+    for sl in lm.solid_lines:
+        pts = np.int32(np.asarray(sl.points) * s)
+        x1, y1 = pts.min(axis=0) - 3
+        x2, y2 = pts.max(axis=0) + 4
+        x1, y1 = max(0, x1), max(0, y1)
+        m = np.zeros((max(1, y2 - y1), max(1, x2 - x1)), np.uint8)
+        cv2.polylines(m, [pts - [x1, y1]], False, 255, 2, cv2.LINE_AA)
+        _blend(view, x1, y1, m.astype(np.float32) / 255.0, _bgr(RED), 0.55)
+    if cfg.count_line_y <= 0:
+        return
+    ly = int(cfg.count_line_y * fh * s)
+    line = np.zeros((4, vw), np.float32)
+    for x in range(0, vw, 26):
+        cv2.line(line, (x, 1), (min(vw, x + 14), 1), 1.0, 2, cv2.LINE_AA)
+    _blend(view, 0, ly - 1, line, (255, 255, 255), 0.55)
+    f_n, f_c = _font("semibold", 13), _font("display", 15)
+    for r in lanes["rows"]:
+        span = lm.by_name[r["name"]].span_at(cfg.count_line_y * fh)
+        if span is None:
+            continue
+        cx = (span[0] + span[1]) / 2 * s
+        txt, num = r["name"], str(r["count"])
+        w = int(f_n.getlength(txt) + 6 + f_c.getlength(num) + 22)
+        x = int(np.clip(cx - w / 2, 2, vw - w - 2))
+        glass(view, (x, ly - 15, x + w, ly + 15), 15, alpha=0.66, border_alpha=0.18)
+        dot(view, (x + 9, ly), 3, _group_rgb(lanes, r["group"]))
+        T.add((x + 16 + ox, ly + oy), txt, LABEL2, f_n, "lm")
+        T.add((x + 16 + f_n.getlength(txt) + 6 + ox, ly + oy), num, LABEL, f_c, "lm")
+
+
+def _bar(canvas, x1: int, y: int, x2: int, frac: float, rgb, h: int = 6) -> None:
+    fill(canvas, (x1, y, x2, y + h), h // 2, (255, 255, 255), 0.10)
+    if frac > 0:
+        fill(canvas, (x1, y, x1 + max(h, int((x2 - x1) * min(1.0, frac))), y + h), h // 2, rgb, 0.95)
+
+
+def _lanes_panel(canvas, T: _Text, lanes: Dict, x1: int, y: int, x2: int) -> int:
+    """Per-lane flow table (grouped by carriageway); returns the bottom y."""
+    f_h, f_name, f_num, f_meta = _font("semibold", 13), _font("semibold", 15), _font("display", 20), _font("regular", 13)
+    groups = list(dict.fromkeys(r["group"] for r in lanes["rows"]))
+    for g in groups:
+        rows = [r for r in lanes["rows"] if r["group"] == g]
+        arrow = {"down": "↓", "up": "↑", "left": "←", "right": "→"}.get(rows[0]["direction"], "")
+        tot = sum(r["count"] for r in rows)
+        dot(canvas, (x1 + 6, y + 9), 4, _group_rgb(lanes, g))
+        T.add((x1 + 16, y + 9), f"{g or 'Lanes'} {arrow}", LABEL, f_h, "lm")
+        T.add((x2, y + 9), f"{tot} veh · {sum(r['rate'] for r in rows):.0f}/min", LABEL2, f_meta, "rm")
+        y += 24
+        for r in rows:
+            state, rgb = lane_state(r["occupancy"])
+            T.add((x1 + 4, y + 11), r["name"], LABEL, f_name, "lm")
+            T.add((x1 + 92, y + 11), str(r["count"]), LABEL, f_num, "rm")
+            T.add((x1 + 100, y + 11), f"{r['rate']:.0f}/min", LABEL2, f_meta, "lm")
+            _bar(canvas, x1 + 160, y + 8, x1 + 248, r["occupancy"], rgb)
+            meta = f"{r['occupancy'] * 100:.0f}%"
+            if r.get("speed") is not None:
+                meta += f" · {r['speed']:.0f} km/h"
+            elif r.get("density_unit") == "veh/km":
+                meta += f" · {r['density']:.0f}/km"
+            T.add((x2, y + 11), meta, LABEL2, f_meta, "rm")
+            y += 26
+        y += 8
+    return y
+
+
+def _event_row(canvas, T: _Text, ev, x1: int, y: int, x2: int, fps: float, t0: float,
+               compact: bool = False) -> int:
+    """One lane event: [pill] time, then plate / vehicle and the message (compact: all on one line,
+    the pill in a fixed-width column). Returns its height."""
+    f_pill, f_meta, f_msg = _font("semibold", 13), _font("regular", 13), _font("regular", 13)
+    rgb = _EVENT_RGB.get(ev.severity, BLUE)
+    _pill(canvas, T, x1, y, event_text(ev), f_pill, fg=LABEL, bg=rgb, bg_alpha=0.9, h=24)
+    T.add((x2, y + 12), _clock(t0 + ev.frame / max(1e-6, fps)), LABEL2, f_meta, "rm")
+    yy, x = (y, x1 + 230) if compact else (y + 32, x1)
+    x2 = x2 - 70 if compact else x2
+    if ev.plate:
+        x += plate_badge(canvas, T, x, yy, ev.plate, 22) + 8
+    who = (ev.vtype or "Vehicle") + ("" if ev.plate else f" #{ev.track_id}")
+    if ev.simulated:
+        x += _pill(canvas, T, x, yy - 1, "Simulated", f_pill, fg=PURPLE, bg=PURPLE, bg_alpha=0.20, h=24) + 8
+    T.add((x, yy + 11), _fit(f"{who} · {ev.message}", f_msg, x2 - x), LABEL2, f_msg, "lm")
+    return 30 if compact else 62
+
+
+def render_lane_sidebar(canvas, T: _Text, lanes: Dict, log: List, side, cfg, fps_video: float,
+                        registry_on: bool) -> None:
+    """Sidebar for a lane camera: per-lane flow, lane events (newest first), then the plate log."""
+    sx1, sy1, sx2, sy2 = side
+    glass(canvas, side, 28, tint=(30, 30, 33), alpha=0.6, border_alpha=0.12, blur=False)
+    T.add((sx1 + 24, sy1 + 22), "Lanes", LABEL, _font("display", 24))
+    T.add((sx2 - 24, sy1 + 38), "count · flow · occupancy", LABEL2, _font("regular", 13), "rm")
+    y = _lanes_panel(canvas, T, lanes, sx1 + 24, sy1 + 64, sx2 - 24)
+    fill(canvas, (sx1 + 24, y, sx2 - 24, y + 1), 0, (255, 255, 255), 0.10)
+    y += 14
+    events = lanes["events"]
+    T.add((sx1 + 24, y + 12), "Events", LABEL, _font("display", 22), "lm")
+    wh = sum(lanes.get("withheld", {}).values())
+    T.add((sx2 - 24, y + 14), f"{len(events)} shown" + (f" · {wh} withheld" if wh else ""), LABEL2,
+          _font("regular", 13), "rm")
+    y += 36
+    if not events:
+        T.add((sx1 + 24, y + 10), "No events yet", LABEL3, _font("regular", 14), "lm")
+        y += 30
+    max_rows = max(0, (sy2 - 16 - 150 - y) // 66)              # keep room for at least one plate card
+    for ev in sorted(events, key=lambda e: e.frame, reverse=True)[:max_rows]:
+        y += _event_row(canvas, T, ev, sx1 + 24, y, sx2 - 24, lanes["fps"], lanes["t0"]) + 4
+    camera = [e for e in log if not getattr(e, "simulated", False)]
+    if y + 150 > sy2 - 16:
+        return
+    fill(canvas, (sx1 + 24, y, sx2 - 24, y + 1), 0, (255, 255, 255), 0.10)
+    y += 12
+    T.add((sx1 + 24, y + 12), "Plate log", LABEL, _font("display", 22), "lm")
+    T.add((sx2 - 24, y + 14), f"{len(camera)} vehicle{'s' if len(camera) != 1 else ''}", LABEL2,
+          _font("regular", 13), "rm")
+    y += 36
+    for e in sorted(camera, key=lambda e: e.last_frame, reverse=True):
+        bottom = _log_card(canvas, T, e, sx1 + 16, y, sx2 - 16, cfg, fps_video, registry_on, sy2 - 16)
+        if bottom is None:
+            break
+        y = bottom + 10
 
 
 # ---------------------------------------------------------------------------- CCTV dashboard
@@ -462,6 +654,30 @@ def _legend(canvas, T: _Text, y: int, x_left: int, x_right: int, by_type: Dict, 
         x += wdt + 22
 
 
+def _lane_legend(canvas, T: _Text, y: int, x_left: int, x_right: int, by_type: Dict, simulated: bool) -> None:
+    f = _font("regular", 14)
+    items = [(GREEN, "Free flow"), (YELLOW, "Dense"), (RED, "Queue"), (BLUE, "Lane change"), (ORANGE, "Hazard"),
+             (RED, "Violation")]
+    if simulated:
+        items.append((PURPLE, "Simulated"))
+    x = x_left + 4
+    for k, (rgb, name) in enumerate(items):
+        if k == 3:                                             # lane states | event colours
+            fill(canvas, (x - 10, y - 8, x - 9, y + 8), 0, (255, 255, 255), 0.18)
+            x += 6
+        dot(canvas, (x + 5, y), 5, rgb)
+        T.add((x + 16, y), name, LABEL2, f, "lm")
+        x += 16 + int(f.getlength(name)) + 22
+    f_num = _font("semibold", 15)
+    parts = [(plural, str(by_type.get(t, 0))) for t, plural in _TYPE_ORDER]
+    widths = [int(f.getlength(p) + 6 + f_num.getlength(n)) for p, n in parts]
+    x = max(x + 10, x_right - sum(widths) - 18 * (len(parts) - 1))
+    for (p, n), wdt in zip(parts, widths):
+        T.add((x, y), p, LABEL2, f, "lm")
+        T.add((x + f.getlength(p) + 6, y), n, LABEL, f_num, "lm")
+        x += wdt + 18
+
+
 def _log_card(canvas, T: _Text, e, x1: int, y: int, x2: int, cfg, fps_video: float, registry_on: bool,
               max_y: int) -> Optional[int]:
     """One plate-log card; returns its bottom y, or None when it does not fit above max_y."""
@@ -505,13 +721,15 @@ def _log_card(canvas, T: _Text, e, x1: int, y: int, x2: int, cfg, fps_video: flo
     return y + h
 
 
-def render_dashboard(frame: np.ndarray, vehicles: List[Dict], log: List, stats: Dict, cfg) -> np.ndarray:
+def render_dashboard(frame: np.ndarray, vehicles: List[Dict], log: List, stats: Dict, cfg,
+                     lanes: Optional[Dict] = None) -> np.ndarray:
     """CCTV layout: header with KPIs, camera view as a rounded card, plate log in a glass sidebar,
     legend + per-type counts under the view.
 
-    vehicles: dicts from AlprPipeline (box, track_id, vtype, plate_box, result, alerts); log: LogEntry
-    list; stats: fps, fps_video, time_sec, count, by_type, rate_per_min, plates, confirmed, alerts
-    (None = registry checks off), valid, flagged.
+    vehicles: dicts from AlprPipeline (box, track_id, vtype, plate_box, result, alerts, events,
+    simulated); log: LogEntry list; stats: fps, fps_video, time_sec, count, by_type, rate_per_min,
+    plates, confirmed, alerts (None = registry checks off), valid, flagged. lanes: AlprPipeline._lane_view
+    (lane camera: lanes on the view, per-lane flow + lane events in the sidebar).
     """
     W, H = cfg.dashboard_size
     fh, fw = frame.shape[:2]
@@ -522,7 +740,10 @@ def render_dashboard(frame: np.ndarray, vehicles: List[Dict], log: List, stats: 
 
     # the camera view with its overlays
     view = cv2.resize(frame, (vx2 - vx1, vy2 - vy1), interpolation=cv2.INTER_AREA if s < 0.6 else cv2.INTER_LINEAR)
-    _count_line(view, T, cfg, fh, s, vx1, vy1, stats.get("count", 0))
+    if lanes is not None:
+        _draw_lanes(view, T, lanes, cfg, fh, s, vx1, vy1)
+    else:
+        _count_line(view, T, cfg, fh, s, vx1, vy1, stats.get("count", 0))
     _draw_vehicles(view, T, vehicles, s, vx1, vy1)
     banner = getattr(cfg, "hud_banner", "")
     if banner:
@@ -538,7 +759,13 @@ def render_dashboard(frame: np.ndarray, vehicles: List[Dict], log: List, stats: 
     # header
     kpis = [("Time", _clock(stats["time_sec"]), LABEL), ("Counted", str(stats["count"]), LABEL),
             ("Flow", f"{stats['rate_per_min']:.0f}/min", LABEL), ("Plates", str(stats["plates"]), LABEL)]
-    if registry_on:
+    if lanes is not None:
+        from .behaviour import LANE_CHANGE
+        evs = lanes["events"]
+        n_lc = sum(e.code == LANE_CHANGE for e in evs)
+        n_rule = sum(e.code != LANE_CHANGE for e in evs)
+        kpis += [("Lane changes", str(n_lc), BLUE if n_lc else LABEL), ("Rule events", str(n_rule), RED if n_rule else LABEL)]
+    elif registry_on:
         n_flag = stats.get("flagged", 0)
         kpis += [("Valid", str(stats.get("valid", 0)), GREEN), ("Flagged", str(n_flag), RED if n_flag else LABEL)]
     else:
@@ -547,6 +774,10 @@ def render_dashboard(frame: np.ndarray, vehicles: List[Dict], log: List, stats: 
     _header(canvas, T, cfg, kpis, W)
 
     # legend row under the view
+    if lanes is not None:
+        _lane_legend(canvas, T, H - _M - 22, vx1, vx2, stats.get("by_type", {}), bool(banner))
+        render_lane_sidebar(canvas, T, lanes, log, side, cfg, stats.get("fps_video", 30.0), registry_on)
+        return T.draw(canvas)
     _legend(canvas, T, H - _M - 22, vx1, vx2, stats.get("by_type", {}), registry_on, bool(banner))
 
     # sidebar: plate log, newest first
@@ -567,12 +798,104 @@ def render_dashboard(frame: np.ndarray, vehicles: List[Dict], log: List, stats: 
     return T.draw(canvas)
 
 
+def _lane_summary(canvas, T: _Text, log: List, stats: Dict, cfg, lanes: Dict, W: int, H: int) -> None:
+    """End card of a lane camera: totals, per-lane flow table, every lane event with its vehicle."""
+    from .behaviour import LANE_CHANGE
+    evs = sorted(lanes["events"], key=lambda e: e.frame)
+    camera = [e for e in log if not getattr(e, "simulated", False)]
+    n_lc = sum(e.code == LANE_CHANGE for e in evs)
+    n_rule = sum(e.code != LANE_CHANGE for e in evs)
+    n_sim = sum(e.simulated for e in evs)
+    tiles = [("Vehicles counted", str(stats.get("count", 0)), LABEL), ("Lane changes", str(n_lc), BLUE),
+             ("Rule events", str(n_rule), RED if n_rule else LABEL), ("Plates read", str(len(camera)), LABEL)]
+    x, ty, tw, th = 64, 150, 250, 104
+    for cap, val, rgb in tiles:
+        glass(canvas, (x, ty, x + tw, ty + th), 22, alpha=0.55, blur=False)
+        T.add((x + 22, ty + 22), cap, LABEL2, _font("semibold", 15))
+        T.add((x + 22, ty + 46), val, rgb, _font("display", 40))
+        x += tw + 20
+    glass(canvas, (x, ty, W - 64, ty + th), 22, alpha=0.55, blur=False)
+    T.add((x + 22, ty + 22), "Public footage", LABEL2, _font("semibold", 15))
+    wh = lanes.get("withheld", {})
+    lines = [f"Violations shown: simulated vehicles only ({n_sim} events)",
+             (f"{sum(wh.values())} rule triggers on camera vehicles withheld (not attributed)" if wh
+              else "No rule triggers on camera vehicles")]
+    for k, ln in enumerate(lines):
+        T.add((x + 22, ty + 56 + 24 * k), _fit(ln, _font("regular", 15), W - 64 - x - 44), LABEL, _font("regular", 15), "lm")
+
+    # per-lane table (left)
+    lx1, ly1, lx2, ly2 = 64, 284, 64 + 760, H - 92
+    glass(canvas, (lx1, ly1, lx2, ly2), 26, alpha=0.55, blur=False)
+    T.add((lx1 + 28, ly1 + 32), "Per-lane flow", LABEL, _font("display", 22), "lm")
+    cal = lanes.get("calibrated")
+    cols = [("Lane", 28), ("Vehicles", 170), ("veh/min", 270), ("Occupancy", 370), ("Density", 540)]
+    if cal:
+        cols.append(("Speed", 660))
+    f_cap, f_row, f_num = _font("semibold", 14), _font("regular", 15), _font("semibold", 16)
+    for name, cx in cols:
+        T.add((lx1 + cx, ly1 + 70), name, LABEL2, f_cap, "lm")
+    y = ly1 + 92
+    rows = lanes["rows"]
+    row_h = int(np.clip((ly2 - y - 20) // max(1, len(rows) + 2), 30, 46))
+    group = None
+    for r in rows:
+        if r["group"] != group:
+            group = r["group"]
+            dot(canvas, (lx1 + 34, y + row_h // 2), 4, _group_rgb(lanes, group))
+            arrow = {"down": "↓", "up": "↑"}.get(r["direction"], "")
+            T.add((lx1 + 46, y + row_h // 2), f"{group} {arrow}", LABEL2, f_cap, "lm")
+            y += row_h
+        cy = y + row_h // 2
+        fill(canvas, (lx1 + 20, y, lx2 - 20, y + 1), 0, (255, 255, 255), 0.08)
+        state, rgb = lane_state(r["occupancy"])
+        T.add((lx1 + 28, cy), r["name"], LABEL, f_num, "lm")
+        T.add((lx1 + 170, cy), str(r["count"]), LABEL, f_num, "lm")
+        T.add((lx1 + 270, cy), f"{r['veh_per_min']:.1f}" if "veh_per_min" in r else f"{r['rate']:.0f}", LABEL, f_row, "lm")
+        _bar(canvas, lx1 + 370, cy - 3, lx1 + 460, r["occupancy"], rgb)
+        T.add((lx1 + 470, cy), f"{r['occupancy'] * 100:.0f}%", LABEL, f_row, "lm")
+        dens = f"{r['density']:.0f} veh/km" if r.get("density_unit") == "veh/km" else f"{r['density']:.1f} veh"
+        T.add((lx1 + 540, cy), dens, LABEL, f_row, "lm")
+        if cal:
+            T.add((lx1 + 660, cy), f"{r['speed']:.0f} km/h" if r.get("speed") is not None else "–", LABEL, f_row, "lm")
+        y += row_h
+
+    # events (right)
+    ex1, ey1, ex2, ey2 = lx2 + 20, 284, W - 64, H - 92
+    glass(canvas, (ex1, ey1, ex2, ey2), 26, alpha=0.55, blur=False)
+    T.add((ex1 + 28, ey1 + 32), "Lane events", LABEL, _font("display", 22), "lm")
+    T.add((ex2 - 28, ey1 + 34), f"{len(evs)} shown", LABEL2, _font("regular", 14), "rm")
+    y = ey1 + 64
+    compact = len(evs) > (ey2 - 20 - y) // 70                # one line per event when two lines do not fit
+    step = 40 if compact else 70
+    for i, ev in enumerate(evs):
+        if y + step + (30 if i < len(evs) - 1 else 0) > ey2 - 10:
+            T.add((ex1 + 28, y + 12), f"… {len(evs) - i} more", LABEL2, f_row, "lm")
+            break
+        if compact and i:
+            fill(canvas, (ex1 + 28, y - 8, ex2 - 28, y - 7), 0, (255, 255, 255), 0.06)
+        _event_row(canvas, T, ev, ex1 + 28, y, ex2 - 28, lanes["fps"], lanes["t0"], compact=compact)
+        y += step
+    if not evs:
+        T.add((ex1 + 28, y + 12), "No lane events", LABEL3, f_row, "lm")
+    banner = getattr(cfg, "hud_banner", "")
+    if banner:
+        dot(canvas, (70, H - 50), 6, PURPLE)
+        T.add((84, H - 50), banner, (215, 200, 240), _font("regular", 15), "lm")
+
+
 def render_summary(log: List, stats: Dict, cfg, title: str = "Session summary",
-                   frame: Optional[np.ndarray] = None) -> np.ndarray:
-    """End card: every vehicle in the plate log with its verdict (Valid, or the registry alerts)."""
+                   frame: Optional[np.ndarray] = None, lanes: Optional[Dict] = None) -> np.ndarray:
+    """End card: every vehicle in the plate log with its verdict (Valid, or the registry alerts). A lane
+    camera (lanes = AlprPipeline._lane_view) gets per-lane flow and the lane events instead."""
     W, H = cfg.dashboard_size
     canvas = _backdrop(frame, W, H)
     T = _Text()
+    if lanes is not None:
+        parts = [p.strip() for p in cfg.hud_title.replace("|", "·").split("·") if p.strip()]
+        T.add((64, 54), title, LABEL, _font("display", 40))
+        T.add((66, 108), " · ".join(parts) if parts else "", LABEL2, _font("regular", 17))
+        _lane_summary(canvas, T, log, stats, cfg, lanes, W, H)
+        return T.draw(canvas)
     parts = [p.strip() for p in cfg.hud_title.replace("|", "·").split("·") if p.strip()]
     T.add((64, 54), title, LABEL, _font("display", 40))
     T.add((66, 108), " · ".join(parts) if parts else "", LABEL2, _font("regular", 17))

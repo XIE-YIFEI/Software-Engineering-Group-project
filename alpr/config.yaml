@@ -151,6 +151,86 @@ profiles:
     hud_mode: dashboard
     hud_title: "SECS Vision · Malaysia Guardhouse Gate LPR"
 
+  # Lane-level traffic flow + driving behaviour, fixed elevated camera (pedestrian bridge) over a
+  # 4+4-lane urban highway at Taman Sri Selayang, Kuala Lumpur (YouTube "Taman Sri Selayang Traffic
+  # Flow | Kuala Lumpur Morning || 4K", Streetcctv, youtube.com/watch?v=KGHhxfkqypg, 15:00-17:00,
+  # 1080p60). Inbound (towards the camera, right) flows freely; outbound (left) is queued.
+  # Lanes are numbered from the median (1 = fast lane). Out4 includes the exit lane to the slip road
+  # (no lane line at the count line). Lane lines, vanishing point and calibration were measured on
+  # the empty-road median image (python -m alpr.lane_tool --profile malaysia_selayang_lanes --show x.jpg).
+  malaysia_selayang_lanes:
+    source: data/videos/malaysia_selayang_overhead.mp4
+    start_sec: 0.0
+    duration: 0.0
+    frame_step: 2                      # 60 FPS -> 30 FPS
+    imgsz: 1280                        # motorcycles at the count line are ~25 px wide (960: 5/19 counted)
+    tracker: alpr/trackers/bytetrack_small.yaml
+    out: outputs/malaysia_selayang_lanes.mp4
+    ignore_zones: [[0.42, 0.95, 0.58, 1.0]]   # channel watermark, bottom centre
+    count_line_y: 0.78
+    min_votes: 6
+    hud_mode: dashboard
+    hud_title: "SECS Vision · Lane-level Traffic Flow · Taman Sri Selayang, Kuala Lumpur"
+    hud_banner: "Simulation · purple vehicles are synthetic (not in the camera image) and demonstrate the rules"
+    summary_sec: 8.0
+    lane_vanishing_point: [0.5026, 0.5352]
+    lane_ref_shift: 0.3                # fitted on the first 40 s only (lane bands centred); see lanes.LaneMap
+    speed_zone_y: [0.66, 0.92]         # inside the calibrated stretch, boxes not cut by the frame edge
+    lane_margin: 0.04                  # cars leave the frame soon after a late lane change (bottom of the view)
+    speed_limit_kmh: 80.0              # assumed for the demo (urban highway)
+    tailgate_headway_sec: 0.8
+    tailgate_min_kmh: 50.0
+    lanes:
+      - {name: In1, group: Inbound, direction: down,
+         polygon: [[0.5053, 0.7037], [0.5044, 0.7407], [0.5038, 0.7796], [0.5029, 0.8796], [0.5034, 0.9954], [0.6107, 0.9954], [0.5853, 0.8796], [0.5616, 0.7796], [0.5520, 0.7407], [0.5425, 0.7037]]}
+      - {name: In2, group: Inbound, direction: down,
+         polygon: [[0.5425, 0.7037], [0.5520, 0.7407], [0.5616, 0.7796], [0.5853, 0.8796], [0.6107, 0.9954], [0.7138, 0.9954], [0.6572, 0.8796], [0.6121, 0.7796], [0.5955, 0.7407], [0.5802, 0.7037]]}
+      - {name: In3, group: Inbound, direction: down,
+         polygon: [[0.5802, 0.7037], [0.5955, 0.7407], [0.6121, 0.7796], [0.6572, 0.8796], [0.7138, 0.9954], [0.8101, 0.9954], [0.7299, 0.8796], [0.6634, 0.7796], [0.6383, 0.7407], [0.6147, 0.7037]]}
+      - {name: In4, group: Inbound, direction: down,
+         polygon: [[0.6147, 0.7037], [0.6383, 0.7407], [0.6634, 0.7796], [0.7299, 0.8796], [0.8101, 0.9954], [0.9038, 0.9954], [0.8024, 0.8796], [0.7179, 0.7796], [0.6859, 0.7407], [0.6559, 0.7037]]}
+      - {name: Out1, group: Outbound, direction: up,
+         polygon: [[0.4279, 0.7037], [0.4136, 0.7407], [0.3982, 0.7796], [0.3557, 0.8796], [0.3019, 0.9954], [0.4143, 0.9954], [0.4366, 0.8796], [0.4578, 0.7796], [0.4665, 0.7407], [0.4751, 0.7037]]}
+      - {name: Out2, group: Outbound, direction: up,
+         polygon: [[0.3861, 0.7037], [0.3618, 0.7407], [0.3359, 0.7796], [0.2677, 0.8796], [0.1858, 0.9954], [0.3019, 0.9954], [0.3557, 0.8796], [0.3982, 0.7796], [0.4136, 0.7407], [0.4279, 0.7037]]}
+      - {name: Out3, group: Outbound, direction: up,
+         polygon: [[0.3432, 0.7037], [0.3064, 0.7407], [0.2680, 0.7796], [0.1696, 0.8796], [0.0568, 0.9954], [0.1858, 0.9954], [0.2677, 0.8796], [0.3359, 0.7796], [0.3618, 0.7407], [0.3861, 0.7037]]}
+      - {name: Out4, group: Outbound, direction: up,
+         polygon: [[0.1769, 0.7222], [0.1499, 0.7407], [0.0917, 0.7796], [0.0000, 0.8380], [0.0000, 0.8796], [0.0000, 0.9954], [0.0568, 0.9954], [0.1696, 0.8796], [0.2105, 0.8380], [0.2680, 0.7796], [0.3064, 0.7407], [0.3248, 0.7222]]}
+    solid_lines:
+      - {name: inbound edge (hatched area), points: [[0.6859, 0.7407], [0.7395, 0.8056], [0.8024, 0.8796], [0.9038, 0.9954]]}
+      - {name: inbound median edge, points: [[0.5053, 0.7037], [0.5038, 0.7796], [0.5034, 0.9954]]}
+      - {name: outbound median edge, points: [[0.4751, 0.7037], [0.4578, 0.7796], [0.4143, 0.9954]]}
+    # SIMULATED vehicles (purple, labelled "Simulated", not in the camera image) that demonstrate the
+    # violation rules; fictitious X-series plates. Paths in road metres (see calibration below: x 0 =
+    # line In1|In2, In1 -1.75, In2 1.75, In3 5.25, In4 8.75, edge line ~10.9, hatched area beyond; y = metres
+    # from the camera's near dash, count line at 5.6 m), each placed where its lane has no real traffic.
+    behaviour_sim_tracks:
+      - {plate: XWW 1001, vtype: Car, label: Wrong-way driver, start_sec: 8.0,
+         path: [[0, -1.75, -6.0], [3.5, -1.75, 22.0]]}
+      - {plate: XSP 4004, vtype: Car, label: Speeding (115 km/h), start_sec: 15.5,
+         path: [[0, 1.75, 36.0], [1.35, 1.75, -7.0]]}
+      - {plate: XSL 2002, vtype: Car, label: Cuts across the solid edge line, start_sec: 17.5,
+         path: [[0, 8.75, 30.0], [1.4, 8.75, 12.0], [2.4, 12.2, 2.0], [3.2, 12.6, -6.0]]}
+      - {plate: XST 3003, vtype: Car, label: Stops in a live lane, start_sec: 85.5,
+         path: [[0, 5.25, 34.0], [1.5, 5.25, 12.0], [2.0, 5.25, 10.0], [10.5, 5.25, 10.0], [12.0, 5.25, -6.0]]}
+      - {plate: XTG 5005, vtype: Car, label: Leader (90 km/h), start_sec: 87.0,
+         path: [[0, -1.75, 36.0], [1.7, -1.75, -6.5]]}
+      - {plate: XTG 5006, vtype: Car, label: Tailgater (0.55 s behind), start_sec: 87.55,
+         path: [[0, -1.75, 36.0], [1.7, -1.75, -6.5]]}
+    # Road plane: x across (m, 0 = lane line In1|In2), y along the road (m, away from the camera).
+    # 12 dash far-ends on the three inbound lane lines. Lane width 3.5 m (JKR; the two lines not used
+    # in the fit come out at 3.4-3.5 m). Dash cycle 6.0 m (2 m dash + 4 m gap), measured: the
+    # wheelbases of 5 vehicles (3 parked Proton taxis, 2.465 m; 2 sedans) give 5.9 +- 0.35 m, and the
+    # dash / cycle ratio in the image is 0.34 (2 / 6 = 0.33). The rural 4.5 + 7.5 m pattern would put
+    # free-flow traffic at 135 km/h.
+    calibration:
+      image_points: [[0.5774, 0.8454], [0.5596, 0.7713], [0.5482, 0.7259], [0.5409, 0.6972], [0.6444, 0.8519], [0.6113, 0.7778], [0.5921, 0.7324], [0.5799, 0.7028], [0.7161, 0.8593], [0.6664, 0.7843], [0.6359, 0.7370], [0.6165, 0.7065]]
+      road_points: [[0.0, 0.0], [0.0, 6.0], [0.0, 12.0], [0.0, 18.0], [3.5, 0.0], [3.5, 6.0], [3.5, 12.0], [3.5, 18.0], [7.0, 0.0], [7.0, 6.0], [7.0, 12.0], [7.0, 18.0]]
+      sigma_width_frac: 0.05           # lane width 3.5 +- 0.17 m
+      sigma_length_frac: 0.06          # dash cycle 6.0 +- 0.35 m (spread of the wheelbase measurements)
+      sigma_click_px: 2.0
+
   malaysia_cctv_urban:
     source: data/videos/malaysia_kl_city_cctv.mp4
     start_sec: 0.0

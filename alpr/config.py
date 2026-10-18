@@ -19,6 +19,7 @@ class AlprConfig:
     out: str = "outputs/alpr_out.mp4"
     frame_crop: List[float] = field(default_factory=list)   # [x1, y1, x2, y2] fractions; crop every frame
                                                            # first (removes recorder UI / overlays)
+    frame_step: int = 1                # process every Nth frame (2 on 60 FPS footage = 30 FPS)
 
     vehicle_model: str = "yolov8s.pt"
     plate_model: str = "models/plate_malaysia.pt"
@@ -60,6 +61,29 @@ class AlprConfig:
     merge_gap_sec: float = 10.0        # same plate on two tracks within this gap = one vehicle
     log_min_status: str = "CONFIRMED"  # a vehicle enters the plate log / results once its plate reaches this
     count_line_y: float = 0.0          # traffic-flow counting line (fraction of frame height); 0 = off
+
+    # lanes of a fixed camera (alpr/lanes.py) and driving-behaviour rules (alpr/behaviour.py). Points are
+    # frame fractions; draw them with `python -m alpr.lane_tool --profile NAME`.
+    lanes: List[dict] = field(default_factory=list)          # {name, group, direction: up|down, polygon}
+    solid_lines: List[dict] = field(default_factory=list)    # {name, points}
+    calibration: dict = field(default_factory=dict)          # {image_points, road_points (m), sigma_*}
+    lane_vanishing_point: List[float] = field(default_factory=list)   # [x, y] where the lane lines meet
+    lane_ref_shift: float = 0.0        # perspective correction of the bottom-centre point (0 = Paper 4 as is)
+    lane_rules: List[str] = field(default_factory=lambda: [
+        "LANE_CHANGE", "SOLID_LINE", "WRONG_WAY", "STOPPED", "SPEEDING", "TAILGATING"])
+    lane_min_sec: float = 0.3          # a new lane counts once the vehicle has been in it this long ...
+    lane_margin: float = 0.12          # ... clearly inside it (x box width past the boundary)
+    wrong_way_sec: float = 1.0         # WRONG_WAY: moved against the lane direction within this time ...
+    wrong_way_min_disp: float = 0.8    # ... by at least this many box heights
+    stopped_sec: float = 5.0           # STOPPED: standing still in a lane this long while traffic flows
+    still_speed: float = 0.08          # box heights / s = standing still
+    moving_speed: float = 0.6          # box heights / s = the carriageway is flowing (not a queue)
+    speed_zone_y: List[float] = field(default_factory=lambda: [0.0, 1.0])   # rows where speed is measured
+    speed_limit_kmh: float = 0.0       # SPEEDING (needs `calibration`); 0 = off
+    tailgate_headway_sec: float = 1.0  # TAILGATING (needs `calibration`): headway at the count line below this
+    tailgate_min_kmh: float = 50.0     # ... at or above this speed
+    show_real_violations: bool = False  # public footage: violations of camera vehicles are counted, not shown
+    behaviour_sim_tracks: List[dict] = field(default_factory=list)   # SIMULATED vehicles (demo of the rules)
 
     # plate verification against a (SIMULATED) vehicle registry, alpr/registry.py
     registry_enabled: bool = False

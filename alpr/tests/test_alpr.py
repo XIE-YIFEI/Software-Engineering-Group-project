@@ -1,5 +1,6 @@
 """Unit tests for the model-free ALPR logic (plates, slot decoding, voting, quality, lead, evaluate,
-dataset labels, OCR reading order, registry rules and alerts).
+dataset labels, OCR reading order, registry rules and alerts, lanes, per-lane flow and the driving
+behaviour rules on synthetic trajectories).
 
 No weights, video or GPU needed:
 
@@ -639,6 +640,282 @@ def test_demo_registry_rebuilds_when_real_plates_change():
         reg.close()
     finally:
         R.GT_DIR = old_dir
+
+
+# ---------------------------------------------------------------- lanes + behaviour rules (synthetic)
+# A 1000 x 1000 frame: inbound lanes A1 (x 500-600) and A2 (x 600-700) travel down the image, outbound
+# B1 (x 350-450) travels up; x > 700 is a lay-by (not a lane). A solid line separates A1 | A2 between
+# y 600 and 900 (dashed above). Road calibration: 3.5 m per 100 px across, 20 px per metre along.
+_LANES = [{"name": "A1", "group": "In", "direction": "down", "polygon": [[.5, .2], [.6, .2], [.6, 1], [.5, 1]]},
+          {"name": "A2", "group": "In", "direction": "down", "polygon": [[.6, .2], [.7, .2], [.7, 1], [.6, 1]]},
+          {"name": "B1", "group": "Out", "direction": "up", "polygon": [[.35, .2], [.45, .2], [.45, 1], [.35, 1]]}]
+_SOLID = [{"name": "A1|A2 solid", "points": [[.6, .6], [.6, .9]]}]
+_CAL = {"image_points": [[.5, 1.0], [.7, 1.0], [.7, .2], [.5, .2]],
+        "road_points": [[0.0, 0.0], [7.0, 0.0], [7.0, 40.0], [0.0, 40.0]]}
+
+
+def _lane_map():
+    from alpr.lanes import LaneMap
+    return LaneMap.from_config(_LANES, _SOLID, 1000, 1000)
+
+
+def _box(x, y, w=60, h=50):
+    """Box with its bottom-centre at (x, y)."""
+    return [x - w / 2, y - h, x + w / 2, y]
+
+
+def _monitor(cal=False, **p):
+    from alpr.behaviour import BehaviourMonitor, RuleParams
+    from alpr.lanes import Calibration
+    c = Calibration.from_config(_CAL, 1000, 1000) if cal else None
+    return BehaviourMonitor(_lane_map(), 30.0, RuleParams(**p), c, 1000)
+
+
+def _drive(mon, tracks, n):
+    """tracks: {track_id: f(frame) -> (x, y) or None, vtype?}. Runs n frames; returns all new events."""
+    out = []
+    for f in range(1, n + 1):
+        vs = []
+        for tid, spec in tracks.items():
+            fn, vtype, sim = (spec + ("Car", False))[:3] if isinstance(spec, tuple) else (spec, "Car", False)
+            p = fn(f)
+            if p is not None:
+                vs.append({"track_id": tid, "box": _box(*p), "vtype": vtype, "simulated": sim})
+        out += mon.update(f, vs)
+    return out
+
+
+def test_lane_geometry_polygon_side_and_reference_point():
+    from alpr.lanes import LaneMap, point_in_polygon, side_of_polyline
+    sq = [(0, 0), (10, 0), (10, 10), (0, 10)]
+    assert point_in_polygon((5, 5), sq) and not point_in_polygon((15, 5), sq)
+    line = [(0, 0), (0, 10)]
+    assert side_of_polyline((1, 5), line) == -side_of_polyline((-1, 5), line) != 0
+    assert side_of_polyline((1, 20), line) == 0                      # beyond the end of the line
+    lm = _lane_map()
+    assert lm.lane_at((550, 500)).name == "A1" and lm.lane_at((800, 500)) is None
+    assert lm.by_name["A1"].axis[1] > 0.99 and lm.by_name["B1"].axis[1] < -0.99
+    # perspective correction: points move away from the vanishing point, more near the camera
+    lm2 = LaneMap.from_config(_LANES, [], 1000, 1000, vanishing_point=[0.5, 0.1], ref_shift=0.3)
+    far, near = lm2.ref_point(_box(650, 300)), lm2.ref_point(_box(650, 900))
+    assert 650 < far[0] < near[0] and lm2.ref_point(_box(500, 900))[0] == 500
+
+
+def test_lane_assigner_ignores_jitter_on_a_line_and_needs_time():
+    from alpr.lanes import LaneAssigner
+    la = LaneAssigner(_lane_map(), min_frames=6, margin=0.12)
+    changes = [la.update(1, _box(600 + (3 if f % 2 else -3), 500), f)[1] for f in range(40)]
+    assert not any(changes)                                          # riding the A1|A2 line: no change
+    la = LaneAssigner(_lane_map(), min_frames=6, margin=0.12)
+    lanes, changes = [], []
+    for f in range(30):
+        lane, ch = la.update(2, _box(550 if f < 12 else 650, 500), f)
+        lanes.append(lane)
+        if ch:
+            changes.append(ch)
+    assert lanes[4] is None and lanes[5] == "A1"                     # first lane after 6 frames
+    assert changes == [("A1", "A2")] and lanes[16] == "A1" and lanes[17] == "A2"
+
+
+def test_lane_change_event_and_solid_line_crossing():
+    from alpr.behaviour import LANE_CHANGE, SOLID_LINE
+    mon = _monitor()
+    ev = _drive(mon, {1: lambda f: (550 if f < 20 else 650, 300 + 2 * f),       # dashed part: change only
+                      2: lambda f: (550 if f < 20 else 650, 650 + 2 * f)}, 60)   # solid part
+    by = {(e.track_id, e.code) for e in ev}
+    assert by == {(1, LANE_CHANGE), (2, LANE_CHANGE), (2, SOLID_LINE)}
+    lc = next(e for e in ev if e.code == LANE_CHANGE and e.track_id == 1)
+    assert (lc.from_lane, lc.lane, lc.severity) == ("A1", "A2", "info")
+    solid = next(e for e in ev if e.code == SOLID_LINE)
+    assert solid.severity == "violation" and solid.withheld                      # a camera vehicle
+    mon = _monitor()
+    ev = _drive(mon, {3: lambda f: (600 + (4 if f % 2 else -4), 650 + 2 * f)}, 60)  # on the solid line
+    assert ev == []
+    mon = _monitor()                                                    # motorcycles filter between lanes
+    ev = _drive(mon, {4: (lambda f: (550 if f < 20 else 650, 300 + 2 * f), "Motorcycle")}, 60)
+    assert ev == []
+
+
+def test_wrong_way_only_against_the_lane_direction():
+    from alpr.behaviour import WRONG_WAY
+    mon = _monitor()
+    ev = _drive(mon, {1: lambda f: (550, 900 - 6 * f),                  # A1 (down) driven upwards
+                      2: lambda f: (650, 300 + 6 * f),                  # A2 normal
+                      3: lambda f: (400, 900 - 6 * f),                  # B1 (up) normal
+                      4: lambda f: (650, 600 + (2 if f % 2 else -2))}, 90)   # jittering in place
+    ww = [e for e in ev if e.code == WRONG_WAY]
+    assert [e.track_id for e in ww] == [1] and ww[0].lane == "A1"
+    mon = _monitor()                                                    # leaves the lanes, then turns back
+    ev = _drive(mon, {5: lambda f: (650, 300 + 6 * f) if f < 60 else (850, 700 - 6 * (f - 60))}, 120)
+    assert not [e for e in ev if e.code == WRONG_WAY]
+
+
+def test_stopped_in_lane_vs_queue_vs_lay_by():
+    from alpr.behaviour import STOPPED
+    flowing = {k: (lambda k: lambda f: (650, 200 + (8 * f + 150 * k) % 800))(k) for k in range(10, 14)}
+    mon = _monitor(stopped_sec=4.0)
+    ev = _drive(mon, {1: lambda f: (550, 600 + min(f, 10)), **flowing}, 200)
+    st = [e for e in ev if e.code == STOPPED]
+    assert [e.track_id for e in st] == [1] and st[0].severity == "hazard" and not st[0].withheld
+    queue = {k: (lambda k: lambda f: (650, 300 + 100 * k))(k) for k in range(1, 4)}     # everyone stopped
+    mon = _monitor(stopped_sec=4.0)
+    assert not [e for e in _drive(mon, {9: lambda f: (550, 600), **queue}, 200) if e.code == STOPPED]
+    mon = _monitor(stopped_sec=4.0)                                      # parked in the lay-by
+    assert not [e for e in _drive(mon, {9: lambda f: (850, 600), **flowing}, 200) if e.code == STOPPED]
+
+
+def test_calibrated_speed_has_an_error_bar_and_speeding_uses_its_lower_bound():
+    from alpr.behaviour import SPEEDING
+    from alpr.lanes import Calibration
+    cal = Calibration.from_config(_CAL, 1000, 1000)
+    assert 0.02 < cal.rel_sigma < 0.15
+    t = [k / 30 for k in range(30)]
+    pts = [(550, 300 + 20 * 25 * tk) for tk in t]                       # 25 m/s along the road = 90 km/h
+    v, s = cal.speed(t, pts)
+    assert abs(v - 90.0) < 0.5 and 0.02 * v < s < 0.15 * v
+    run = lambda lim: [e for e in _drive(_monitor(cal=True, speed_limit_kmh=lim),   # noqa: E731
+                                         {1: lambda f: (550, 200 + 500 / 30 * f)}, 45) if e.code == SPEEDING]
+    fast = run(60.0)
+    assert len(fast) == 1 and abs(fast[0].value - 90) < 2 and fast[0].error > 0
+    assert run(88.0) == []                                              # 90 km/h, but not beyond doubt
+    assert [e for e in _drive(_monitor(cal=False, speed_limit_kmh=60.0), {1: lambda f: (550, 200 + 500 / 30 * f)},
+                              45) if e.code == SPEEDING] == []          # no calibration, no km/h
+
+
+def test_tailgating_from_the_headway_at_the_count_line():
+    from alpr.behaviour import TAILGATING
+    def run(gap_frames, cal=True):
+        mon = _monitor(cal=cal, count_line_y=0.6, tailgate_headway_sec=1.0, tailgate_min_kmh=50.0)
+        lead = lambda f: (550, 200 + 500 / 30 * f)                      # 25 m/s, down A1    # noqa: E731
+        foll = lambda f: (550, 200 + 500 / 30 * (f - gap_frames)) if f > gap_frames else None   # noqa: E731
+        return [e for e in _drive(mon, {1: lead, 2: foll}, 60 + gap_frames) if e.code == TAILGATING]
+    close = run(15)                                                     # 0.5 s behind
+    assert len(close) == 1 and close[0].track_id == 2 and abs(close[0].value - 0.5) < 0.05
+    assert run(75) == []                                                # 2.5 s behind
+    assert run(15, cal=False) == []
+    assert run(2) == []                                                 # 0.07 s = 1.7 m: beside, not behind
+    mon = _monitor(cal=True, count_line_y=0.6, tailgate_headway_sec=1.0, tailgate_min_kmh=50.0)
+    lead = (lambda f: (550, 200 + 500 / 30 * f), "Motorcycle")         # a motorcycle is not a leader
+    foll = lambda f: (550, 200 + 500 / 30 * (f - 15)) if f > 15 else None   # noqa: E731
+    assert [e for e in _drive(mon, {1: lead, 2: foll}, 75) if e.code == TAILGATING] == []
+
+
+def test_public_footage_withholds_violations_of_camera_vehicles():
+    from alpr.behaviour import WRONG_WAY
+    up = lambda f: (550, 900 - 6 * f)                                   # noqa: E731
+    mon = _monitor()
+    ev = _drive(mon, {1: up, -1: (up, "Car", True)}, 90)
+    real, sim = (next(e for e in ev if e.track_id == t and e.code == WRONG_WAY) for t in (1, -1))
+    assert real.withheld and not sim.withheld and sim.simulated
+    assert mon.visible_events() == [sim] and mon.withheld_counts() == {WRONG_WAY: 1}
+    mon = _monitor(show_real_violations=True)
+    assert all(not e.withheld for e in _drive(mon, {1: up}, 90))
+
+
+def test_per_lane_counts_occupancy_density_and_time_series():
+    from alpr.flow import LaneMetrics
+    lc = LineCounter(0.5)
+    for tid, (f, lane) in enumerate([(30, "A1"), (60, "A1"), (90, "A2")]):
+        lc.update(tid, (0, 0, 1, 400), "Car", f - 1, 1000, lane=lane)
+        lc.update(tid, (0, 0, 1, 600), "Car", f, 1000, lane=lane)
+    assert lc.by_lane() == {"A1": 2, "A2": 1}
+    assert abs(lc.rate_per_min(300, 30, lane="A1") - 2 * 60 / 15) < 1e-9
+    lm = LaneMetrics(["A1", "A2"], 30.0, {"A1": 50.0})
+    for f in range(1, 301):                                             # 10 s: A1 covered 1/4 of the time
+        lm.update(f, {"A1": f % 4 == 0}, {"A1": 2, "A2": 1})
+    assert abs(lm.occupancy("A1") - 0.25) < 0.01 and lm.occupancy("A2") == 0
+    assert lm.density("A1") == (40.0, "veh/km") and lm.density("A2") == (1.0, "veh")
+    ts = lm.time_series(lc, bin_sec=5.0, speeds={0: 60.0, 1: 80.0})
+    assert [r["count"] for r in ts["A1"]] == [2, 0, 0] and ts["A1"][0]["mean_speed_kmh"] == 70.0
+    assert ts["A1"][0]["density_veh_km"] == 40.0 and "density_veh_km" not in ts["A2"][0]
+
+
+def test_lane_eval_scores_per_lane_and_separates_wrong_lanes():
+    from alpr.lane_eval import evaluate_lanes
+    gt = [(1.0, "A1"), (2.0, "A1"), (3.0, "A2"), (5.0, "A2")]
+    pred = [(1.2, "A1"), (2.1, "A2"), (3.1, "A2"), (9.0, "A1")]
+    r = evaluate_lanes(pred, gt, ["A1", "A2"], tol=0.5)
+    assert r["per_lane"]["A1"]["matched"] == 1 and r["per_lane"]["A2"]["matched"] == 1
+    assert r["wrong_lane"] == 1 and r["missed"] == 1 and r["extra"] == 1
+    assert r["per_lane"]["A1"]["count_accuracy"] == 1.0                # 2 vs 2, though not the same ones
+    assert abs(r["per_lane"]["A2"]["count_accuracy"] - 1.0) < 1e-9 and r["per_lane"]["A2"]["recall"] == 0.5
+
+
+def test_simulated_traffic_follows_its_path_and_is_marked():
+    from alpr.behaviour import SimulatedTraffic
+    from alpr.lanes import Calibration
+    spec = [{"plate": "XWW 1001", "vtype": "Car", "start_sec": 2.0, "path_img": [[0, 0.55, 0.9, 0.06], [2, 0.55, 0.3, 0.04]]}]
+    st = SimulatedTraffic(spec, None, 1000, 1000, 30.0)
+    assert st.vehicles(30) == []                                        # before start_sec
+    v0, v1 = st.vehicles(61)[0], st.vehicles(90)[0]
+    assert v0["simulated"] and v0["track_id"] == -1 and v0["plate"] == "XWW 1001"
+    assert v1["box"][3] < v0["box"][3] and abs((v1["box"][0] + v1["box"][2]) / 2 - 550) <= 1
+    assert st.vehicles(200) == []
+    cal = Calibration.from_config(_CAL, 1000, 1000)
+    st = SimulatedTraffic([{"plate": "X1", "start_sec": 0, "path": [[0, 1.75, 30.0], [3, 1.75, 0.0]]}], cal, 1000, 1000, 30.0)
+    b = st.vehicles(45)[0]["box"]                                       # 1.5 s: 15 m, front edge at 12.75 m
+    assert abs((b[0] + b[2]) / 2 - 550) < 2 and abs(b[3] - (1000 - 20 * 12.75)) < 2
+
+
+def test_dashboard_and_summary_render_lanes_and_events():
+    from alpr.behaviour import LaneEvent
+    from alpr.hud import render_dashboard, render_summary
+    lm = _lane_map()
+    rows = [{"name": l.name, "group": l.group, "direction": l.direction, "polygon": l.polygon, "count": 3,
+             "rate": 12.0, "veh_per_min": 12.0, "occupancy": 0.5 if l.name == "B1" else 0.1, "density": 30.0,
+             "density_unit": "veh/km", "speed": 60.0} for l in lm.lanes]
+    evs = [LaneEvent("LANE_CHANGE", 1, 10, "A2", "Lane change A1 → A2", from_lane="A1", vtype="Car", plate="WA 1234 B"),
+           LaneEvent("WRONG_WAY", -1, 20, "A1", "Moving against the traffic", vtype="Car", simulated=True, plate="XWW 1001")]
+    lanes = {"map": lm, "rows": rows, "events": evs, "withheld": {"TAILGATING": 2}, "calibrated": True,
+             "simulated": True, "fps": 30.0, "t0": 0.0}
+    cfg = AlprConfig(hud_mode="dashboard", count_line_y=0.6, hud_banner="Simulation · test")
+    vehicles = [{"track_id": -1, "box": [520, 500, 580, 560], "vtype": "Car", "simulated": True, "plate_box": None,
+                 "result": PlateResult("XWW 1001", "XWW1001", 1.0, 0, CONFIRMED), "alerts": [], "events": [evs[1]]}]
+    stats = {"fps": 5.0, "fps_video": 30.0, "time_sec": 1.0, "count": 9, "by_type": {"Car": 9}, "rate_per_min": 30.0,
+             "plates": 0, "confirmed": 0, "alerts": None}
+    out = render_dashboard(np.full((1000, 1000, 3), 90, np.uint8), vehicles, [], stats, cfg, lanes=lanes)
+    assert out.shape == (1080, 1920, 3)
+    b, g, r = (out[..., k].astype(int) for k in range(3))
+    purple = (r > 150) & (b > 190) & (g < 130)                          # simulated vehicle (system purple)
+    red = (r > 200) & (g < 110) & (b < 110)                             # wrong-way pill / queue lane
+    assert purple[:, :1444].any() and red[:, :1444].any() and red[:, 1468:].any()
+    card = render_summary([], stats, cfg, lanes=lanes)
+    assert card.shape == (1080, 1920, 3) and not np.array_equal(card, render_summary([], stats, cfg))
+
+
+def test_pipeline_lane_frame_counts_per_lane_and_reports():
+    from alpr.flow import LineCounter as LC
+    from alpr.pipeline import AlprPipeline
+    p = _bare_pipeline(lanes=_LANES, solid_lines=_SOLID, calibration=_CAL, count_line_y=0.6,
+                       behaviour_sim_tracks=[{"plate": "XWW 1001", "start_sec": 0.5,
+                                              "path_img": [[0, 0.55, 0.3, 0.05], [1, 0.55, 0.9, 0.05]]}])
+    p.counter = LC(0.6)
+    p._init_lanes(1000, 1000)
+    for f in range(1, 61):
+        v = {"track_id": 7, "box": _box(650, 300 + 8 * f), "vtype": "Car"}
+        sims = p._lanes_frame([v], f, 1000)
+        raw = p.lane_map.lane_at(p.lane_map.ref_point(v["box"]))
+        p.counter.update(7, v["box"], "Car", f, 1000, lane=v.get("lane") or (raw.name if raw else None))
+        if 20 <= f <= 40:
+            assert sims and sims[0]["simulated"] and sims[0]["result"].text == "XWW 1001"
+    rep = p.lane_report()
+    assert rep["per_lane"]["A2"]["count"] == 1 and rep["crossings"][0]["lane"] == "A2"
+    assert abs(rep["per_lane"]["A2"]["zone_length_m"] - 40.0) < 0.2 and rep["per_lane"]["A2"]["occupancy"] > 0
+    assert set(rep["per_10s"]) == {"A1", "A2", "B1"} and p.counter.total == 1      # simulated car not counted
+
+
+def test_lane_events_link_to_the_plate_once_it_is_read():
+    from alpr.behaviour import STOPPED
+    from alpr.pipeline import LogEntry
+    p = _bare_pipeline(lanes=_LANES, count_line_y=0.6, stopped_sec=2.0)
+    p._init_lanes(1000, 1000)
+    for f in range(1, 121):                                             # stands still in A1, nobody else
+        p._lanes_frame([{"track_id": 7, "box": _box(550, 600), "vtype": "Car"}], f, 1000)
+    ev, = p.lane_events()
+    assert ev.code == STOPPED and ev.plate == "" and ev.emitted > ev.frame   # fired 2 s after it began
+    res = PlateResult("WA 1234 B", "WA1234B", 0.95, 10, CONFIRMED)
+    p.log.append(LogEntry(res, "Car", "", 1, 120, {7}))                  # plate read afterwards
+    assert p.lane_events()[0].plate == "WA 1234 B"
 
 
 if __name__ == "__main__":
