@@ -60,6 +60,33 @@ APART_MAX_OVERLAP = 0.3   # two boxes overlapping less than this (of the smaller
 APART_MIN_FRAMES = 5      # ... seen like that in this many frames: never merged; identical plate = DUPLICATE
 
 
+def openvino_dir(weights: str) -> str:
+    """Where `model.export(format="openvino")` puts the export of a .pt: <name>_openvino_model/ beside it."""
+    return os.path.splitext(weights)[0] + "_openvino_model"
+
+
+def load_detector(weights: str, backend: str = "pt", device: str = "CPU") -> Tuple[YOLO, Dict]:
+    """A YOLO detector plus the extra arguments for its predict / track calls.
+
+    backend "openvino": the OpenVINO export of the .pt (exported here on first use, dynamic input shape so
+    the letterboxing is the same as the .pt's). On the CPU it runs in FP32 and gives the same detections
+    as the .pt (measured, TEAM_GUIDE.md section 11). Falls back to the .pt when the export is missing and
+    cannot be made (openvino not installed)."""
+    if backend == "openvino":
+        ov = openvino_dir(weights)
+        if not os.path.isdir(ov):
+            try:
+                print(f"exporting {weights} to OpenVINO -> {ov}")
+                YOLO(weights).export(format="openvino", dynamic=True, half=False, verbose=False)
+            except Exception as e:                       # openvino missing, export error: keep the .pt
+                print(f"OpenVINO export of {weights} failed ({e}); using the .pt")
+        if os.path.isdir(ov):
+            return YOLO(ov, task="detect"), {"device": f"intel:{device.lower()}"}
+    elif backend != "pt":
+        raise ValueError(f"model_backend must be 'pt' or 'openvino', not '{backend}'")
+    return YOLO(weights), {}
+
+
 @dataclass
 class TrackState:
     first_frame: int
@@ -112,10 +139,16 @@ class AlprPipeline:
     def __init__(self, cfg: AlprConfig, ocr=None, fps: float = 25.0):
         self.cfg = cfg
         self.fps = fps
-        self.vehicle_model = YOLO(cfg.vehicle_model)
-        self.plate_model = YOLO(cfg.plate_model)
-        self.plate_fallback = YOLO(cfg.plate_model_fallback) if cfg.plate_model_fallback else None
-        self.ocr = ocr or make_ocr(cfg.ocr_backend, cfg.ocr_model)
+        self.vehicle_model, self._vehicle_args = load_detector(cfg.vehicle_model, cfg.model_backend, cfg.openvino_device)
+        self.plate_model = self.plate_fallback = self.ocr = None
+        self._plate_args: Dict = {}
+        self._fallback_args: Dict = {}
+        if cfg.read_plates:
+            self.plate_model, self._plate_args = load_detector(cfg.plate_model, cfg.model_backend, cfg.openvino_device)
+            if cfg.plate_model_fallback:
+                self.plate_fallback, self._fallback_args = load_detector(cfg.plate_model_fallback, cfg.model_backend,
+                                                                         cfg.openvino_device)
+            self.ocr = ocr or make_ocr(cfg.ocr_backend, cfg.ocr_model, cfg.ocr_threads)
         self.voter = PlateVoter(cfg.min_votes, cfg.confirm_conf, max_corrections=cfg.max_plate_corrections,
                                 resolve_ligatures=cfg.resolve_ligatures)
         self.lead = LeadSelector(cfg.lane_weight, cfg.lead_hysteresis, cfg.min_lead_w_frac)
@@ -129,6 +162,7 @@ class AlprPipeline:
         self._sim_pending = sorted(cfg.registry_sim_events, key=lambda ev: float(ev["at_sec"])) if self.checker else []
         self._reset_apart()
         self._last_t: Optional[float] = None
+        self._id_offset = 0                 # added to tracker ids; raised by reset_tracking (rotating views)
         # lanes are built on the first frame (they need the frame size)
         self.lane_map: Optional[LaneMap] = None
         self.calibration: Optional[Calibration] = None
@@ -221,7 +255,7 @@ class AlprPipeline:
         h, w = frame.shape[:2]
         res = self.vehicle_model.track(frame, persist=True, tracker=cfg.tracker or TRACKER_CFG,
                                        classes=cfg.vehicle_classes, conf=cfg.track_conf, imgsz=cfg.imgsz,
-                                       agnostic_nms=True, verbose=False)[0]
+                                       agnostic_nms=True, verbose=False, **self._vehicle_args)[0]
         out: List[Dict] = []
         if res.boxes is None or res.boxes.id is None:
             return out
@@ -233,7 +267,7 @@ class AlprPipeline:
             cx, cy = (x1 + x2) / 2 / w, (y1 + y2) / 2 / h
             if any(z[0] <= cx <= z[2] and z[1] <= cy <= z[3] for z in cfg.ignore_zones):
                 continue
-            tid = int(tid)
+            tid = int(tid) + self._id_offset
             st = self.states.get(tid)
             if st is None:
                 st = self.states[tid] = TrackState(idx, idx)
@@ -245,26 +279,35 @@ class AlprPipeline:
             out.append({"track_id": tid, "box": [x1, y1, x2, y2], "vtype": st.vtype, "conf": float(conf)})
         return out
 
+    def reset_tracking(self) -> None:
+        """Start new tracks (a rotating camera came back to the view after showing others): the tracker
+        is cleared and new track ids continue above every id used so far, because counting, lanes and
+        plate voting are keyed by track id."""
+        predictor = getattr(self.vehicle_model, "predictor", None)
+        for tracker in (getattr(predictor, "trackers", None) or []):
+            tracker.reset()
+        self._id_offset = max(self.states, default=self._id_offset) + 1
+
     def _detect_plates(self, crops: List[np.ndarray], offsets: List[Tuple[int, int]],
                        frame_shape: Tuple[int, ...]) -> List[List[Tuple[Tuple[int, int, int, int], float]]]:
         """Plate candidates per vehicle crop (best first), all crops of a frame in one model call
         (~35% faster on CPU than one call per vehicle). The fallback model only sees the misses."""
-        cands = self._plate_candidates(self.plate_model, crops, offsets, frame_shape)
+        cands = self._plate_candidates(self.plate_model, crops, offsets, frame_shape, self._plate_args)
         if self.plate_fallback is not None:
             miss = [i for i, c in enumerate(cands) if not c]
             if miss:
                 fb = self._plate_candidates(self.plate_fallback, [crops[i] for i in miss],
-                                            [offsets[i] for i in miss], frame_shape)
+                                            [offsets[i] for i in miss], frame_shape, self._fallback_args)
                 for i, c in zip(miss, fb):
                     cands[i] = c
         return cands
 
-    def _plate_candidates(self, model, crops, offsets, frame_shape):
+    def _plate_candidates(self, model, crops, offsets, frame_shape, model_args):
         if not crops:
             return []
         cfg = self.cfg
         H, W = frame_shape[:2]
-        results = model.predict(crops, imgsz=cfg.plate_imgsz, conf=cfg.plate_conf, verbose=False)
+        results = model.predict(crops, imgsz=cfg.plate_imgsz, conf=cfg.plate_conf, verbose=False, **model_args)
         out = []
         for crop, (ox, oy), res in zip(crops, offsets, results):
             vh, vw = crop.shape[:2]
@@ -482,7 +525,7 @@ class AlprPipeline:
                 if _contain(boxes[a], boxes[b]) < APART_MAX_OVERLAP:
                     self._note_apart(a, b, idx)
         # plate detection for all vehicles due this frame in one batched model call
-        jobs = [(v, self.states[v["track_id"]]) for v in vehicles]
+        jobs = [(v, self.states[v["track_id"]]) for v in vehicles] if self.cfg.read_plates else []
         jobs = [(v, st, b) for v, st in jobs if (b := self._plate_job(frame, v, st, idx)) is not None]
         cands = self._detect_plates([frame[b[1]:b[3], b[0]:b[2]] for _, _, b in jobs],
                                     [(b[0], b[1]) for _, _, b in jobs], frame.shape)
@@ -509,6 +552,8 @@ class AlprPipeline:
             for v in vehicles + sims:
                 v["events"] = [e for e in recent if e.track_id == v["track_id"]]
 
+        if self.cfg.headless:                                # analysis only: nothing drawn
+            return None, vehicles
         if self.cfg.hud_mode == "dashboard":
             annotated = render_dashboard(frame, vehicles + sims, self.log, self._stats(idx), self.cfg,
                                          lanes=self._lane_view(idx))
@@ -632,6 +677,49 @@ def _contain(a, b) -> float:
     return ix * iy / small if small > 0 else 0.0
 
 
+class ViewGate:
+    """Is a frame the wanted view of a camera that shows several views in turn (a live stream cycling
+    through cameras)? The view is recognised by a template - e.g. its on-screen label, which looks the
+    same day and night - found by normalised cross-correlation near `box` (frame fractions)."""
+
+    def __init__(self, template: np.ndarray, box: Tuple[float, float, float, float], frame_wh: Tuple[int, int],
+                 min_score: float = 0.6, margin: float = 0.02, binary_level: int = 0):
+        w, h = frame_wh
+        self.template = template if template.ndim == 2 else cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+        x1, y1, x2, y2 = box
+        self.region = (max(0, int((x1 - margin) * w)), max(0, int((y1 - margin) * h)),
+                       min(w, int((x2 + margin) * w)), min(h, int((y2 + margin) * h)))
+        self.min_score = min_score
+        self.binary_level = binary_level     # > 0: compare only pixels brighter than this (white overlay text)
+        if binary_level:
+            self.template = np.where(self.template >= binary_level, 255, 0).astype(np.uint8)
+
+    @classmethod
+    def from_config(cls, gate: Dict, w: int, h: int) -> "ViewGate":
+        path = gate["template"]
+        if not os.path.isabs(path) and not os.path.exists(path):
+            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", path)
+        tpl = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+        if tpl is None:
+            raise FileNotFoundError(f"view_gate template not found: {gate['template']}")
+        return cls(tpl, tuple(gate["box"]), (w, h), float(gate.get("min_score", 0.6)), float(gate.get("margin", 0.02)),
+                   int(gate.get("binary_level", 0)))
+
+    def score(self, frame: np.ndarray) -> float:
+        x1, y1, x2, y2 = self.region
+        roi = frame[y1:y2, x1:x2]
+        roi = roi if roi.ndim == 2 else cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        if self.binary_level:
+            roi = np.where(roi >= self.binary_level, 255, 0).astype(np.uint8)
+        th, tw = self.template.shape[:2]
+        if roi.shape[0] < th or roi.shape[1] < tw:
+            return 0.0
+        return float(cv2.matchTemplate(roi, self.template, cv2.TM_CCOEFF_NORMED).max())
+
+    def __call__(self, frame: np.ndarray) -> bool:
+        return self.score(frame) >= self.min_score
+
+
 class VideoOut:
     """Annotated video writer. H.264 straight through the ffmpeg binary bundled with imageio-ffmpeg
     (one encode; plays in browsers / PowerPoint); OpenCV MPEG-4 when imageio-ffmpeg is missing."""
@@ -690,15 +778,21 @@ def run(cfg: AlprConfig) -> int:
 
     os.makedirs(os.path.dirname(cfg.out) or ".", exist_ok=True)
     out_size = tuple(cfg.dashboard_size) if cfg.hud_mode == "dashboard" else (width, height)
-    writer = VideoOut(cfg.out, fps, out_size)
+    writer = None if cfg.headless else VideoOut(cfg.out, fps, out_size)
 
     print("=" * 64)
     print(f"SECS ALPR  profile={cfg.profile}  {width}x{height} @ {fps:.1f} FPS"
-          + (f" (every {step}th of {fps_in:.0f})" if step > 1 else "") + f"  ocr={cfg.ocr_backend}")
-    print(f"window {cfg.start_sec}s -> {cfg.start_sec + total / fps:.1f}s ({total} frames) -> {cfg.out}")
+          + (f" (every {step}th of {fps_in:.0f})" if step > 1 else "")
+          + (f"  ocr={cfg.ocr_backend}" if cfg.read_plates else "  plates off")
+          + f"  models={cfg.model_backend}" + (f":{cfg.openvino_device}" if cfg.model_backend == "openvino" else "")
+          + ("  headless" if cfg.headless else ""))
+    print(f"window {cfg.start_sec}s -> {cfg.start_sec + total / fps:.1f}s ({total} frames) -> "
+          + (os.path.splitext(cfg.out)[0] + ".plates.json" if cfg.headless else cfg.out))
     print("=" * 64)
 
     pipe = AlprPipeline(cfg, fps=fps)
+    gate = ViewGate.from_config(cfg.view_gate, width, height) if cfg.view_gate else None
+    in_view, n_in_view = True, 0
     t_start, n, last_frame = time.time(), 0, None
     while n < total:
         ok, frame = cap.read()
@@ -709,26 +803,42 @@ def run(cfg: AlprConfig) -> int:
         n += 1
         if crop:
             frame = np.ascontiguousarray(frame[crop[1]:crop[3], crop[0]:crop[2]])
+        if gate is not None:                                   # rotating camera: another view is on screen
+            if not gate(frame):
+                in_view = False
+                continue
+            if not in_view:
+                pipe.reset_tracking()
+                in_view = True
+            n_in_view += 1
         last_frame = frame
         annotated, vehicles = pipe.process_frame(frame, n)
-        writer.write(annotated)
+        if writer is not None:
+            writer.write(annotated)
         if n % 50 == 0:
             st = pipe._stats(n)
             last = next((e.result for e in reversed(pipe.log) if not e.simulated), None)
             print(f"[{n}/{total}] {n / fps:.1f}s | active {len(vehicles)} | counted {st['count']} | "
                   f"plates {st['plates']} | last {last.text + ' ' + last.status if last else '-'}")
     cap.release()
-    if cfg.hud_mode == "dashboard" and cfg.summary_sec > 0:      # end card: every vehicle + verdict
+    elapsed = max(1e-3, time.time() - t_start)                 # frames only (the end card is not timed)
+    if writer is not None and cfg.hud_mode == "dashboard" and cfg.summary_sec > 0:   # end card: every vehicle
         card = render_summary(pipe.log, pipe._stats(n), cfg, frame=last_frame, lanes=pipe._lane_view(n, session=True))
         for _ in range(int(cfg.summary_sec * fps)):
             writer.write(card)
-    writer.close()
-    elapsed = max(1e-3, time.time() - t_start)
+    if writer is not None:
+        writer.close()
 
     start = int(cfg.start_sec * fps)                           # in processed frames
     rows = pipe.summary(start)
     report = {"source": cfg.source, "profile": cfg.profile, "fps": fps, "frames": n,
-              "window_sec": [cfg.start_sec, round(cfg.start_sec + n / fps, 2)], "plates": rows}
+              "window_sec": [cfg.start_sec, round(cfg.start_sec + n / fps, 2)], "plates": rows,
+              "processing": {"model_backend": "openvino" if pipe._vehicle_args else "pt",
+                             "openvino_device": cfg.openvino_device if pipe._vehicle_args else None,
+                             "headless": cfg.headless, "read_plates": cfg.read_plates,
+                             "frames_per_sec": round(n / elapsed, 2)}}
+    if gate is not None:
+        report["view_gate"] = {"frames_in_view": n_in_view, "frames": n, "template": cfg.view_gate.get("template")}
     if pipe.counter is not None:
         report["flow"] = {"count_line_y": cfg.count_line_y, "total": pipe.counter.total,
                           "by_type": pipe.counter.by_type(),
@@ -747,7 +857,8 @@ def run(cfg: AlprConfig) -> int:
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
     print("=" * 64)
-    print(f"done: {n} frames in {elapsed:.1f}s ({n / elapsed:.1f} FPS)  video -> {cfg.out} ({writer.codec})")
+    print(f"done: {n} frames in {elapsed:.1f}s ({n / elapsed:.1f} FPS)"
+          + (f"  video -> {cfg.out} ({writer.codec})" if writer is not None else "  (headless: no video)"))
     for r in rows:
         print(f"  {r['first_sec']:>6.1f}s  {r['vtype']:<10} {r['plate']:<12} {r['status']:<10} "
               f"conf {r['confidence']:.0%}  reads {r['votes']:<3} {r['region']:<16} tracks {r['track_ids']}"

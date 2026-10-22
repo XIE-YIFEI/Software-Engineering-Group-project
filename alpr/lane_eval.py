@@ -89,9 +89,14 @@ def evaluate_lanes(pred: Sequence[Tuple[float, str]], gt: Sequence[Tuple[float, 
 
 
 # ---------------------------------------------------------------------------- slit-scan
+GAP_BGR = (70, 40, 40)          # slit-scan rows of frames that show another view (rotating camera)
+
+
 def slitscan(source: str, y_frac: float, x_range: Tuple[int, int], step: int = 2, start_sec: float = 0.0,
-             duration: float = 0.0, band: int = 1) -> Tuple[np.ndarray, float]:
-    """(rows, fps of the rows): the count-line row (mean of 2*band+1 rows) of every `step`th frame."""
+             duration: float = 0.0, band: int = 1, crop: Optional[Sequence[float]] = None,
+             gate=None) -> Tuple[np.ndarray, float]:
+    """(rows, fps of the rows): the count-line row (mean of 2*band+1 rows) of every `step`th frame.
+    crop: the profile's frame_crop; gate: a pipeline.ViewGate - frames of other views become GAP_BGR rows."""
     cap = cv2.VideoCapture(source)
     fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
     cap.set(cv2.CAP_PROP_POS_FRAMES, int(start_sec * fps))
@@ -102,8 +107,14 @@ def slitscan(source: str, y_frac: float, x_range: Tuple[int, int], step: int = 2
         if not ok:
             break
         if i % step == 0:
+            if crop:
+                H, W = f.shape[:2]
+                f = f[int(crop[1] * H):int(crop[3] * H), int(crop[0] * W):int(crop[2] * W)]
             y = int(y_frac * f.shape[0])
-            rows.append(f[y - band:y + band + 1, x_range[0]:x_range[1]].mean(axis=0))
+            if gate is not None and not gate(f):
+                rows.append(np.full((x_range[1] - x_range[0], 3), GAP_BGR, np.float64))
+            else:
+                rows.append(f[y - band:y + band + 1, x_range[0]:x_range[1]].mean(axis=0))
         i += 1
     cap.release()
     return np.asarray(rows, np.uint8), fps / step
@@ -162,6 +173,9 @@ def main(argv=None) -> int:
     ap.add_argument("--slitscan", action="store_true", help="write slit-scan sheets for hand counting")
     ap.add_argument("--profile")
     ap.add_argument("--group", help="carriageway (lane group) to slit-scan, e.g. Inbound")
+    ap.add_argument("--source", help="override the profile's video")
+    ap.add_argument("--start-sec", type=float, help="override the profile's start (s into the video)")
+    ap.add_argument("--duration", type=float, help="override the profile's duration (s)")
     ap.add_argument("--out", default="outputs/lanes/slitscan")
     args = ap.parse_args(argv)
 
@@ -169,16 +183,26 @@ def main(argv=None) -> int:
         from .config import load_config
         from .lanes import LaneMap
         cfg = load_config(args.profile)
+        for name in ("source", "start_sec", "duration"):
+            if getattr(args, name) is not None:
+                setattr(cfg, name, getattr(args, name))
         cap = cv2.VideoCapture(cfg.source)
         W, H = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         cap.release()
+        if cfg.frame_crop:
+            W = int(cfg.frame_crop[2] * W) - int(cfg.frame_crop[0] * W)
+            H = int(cfg.frame_crop[3] * H) - int(cfg.frame_crop[1] * H)
+        gate = None
+        if cfg.view_gate:
+            from .pipeline import ViewGate
+            gate = ViewGate.from_config(cfg.view_gate, W, H)
         lm = LaneMap.from_config(cfg.lanes, cfg.solid_lines, W, H)
         y = cfg.count_line_y * H
         bounds = {l.name: l.span_at(y) for l in lm.lanes if (not args.group or l.group == args.group) and l.span_at(y)}
         x0 = int(max(0, min(a for a, _ in bounds.values()) - 20))
         x1 = int(min(W, max(b for _, b in bounds.values()) + 20))
         rows, rate = slitscan(cfg.source, cfg.count_line_y, (x0, x1), step=max(1, cfg.frame_step),
-                              start_sec=cfg.start_sec, duration=cfg.duration)
+                              start_sec=cfg.start_sec, duration=cfg.duration, crop=cfg.frame_crop or None, gate=gate)
         os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
         for p in slitscan_sheets(rows, rate, bounds, x0, cfg.start_sec, f"{args.out}_{args.group or 'all'}"):
             print(p)

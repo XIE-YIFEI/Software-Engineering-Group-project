@@ -1,5 +1,10 @@
-# Construction Safety Inspection — Approach-Validation Prototype
-# Python 3.11+  (tested on 3.13)
+# Construction Safety Inspection - Approach-Validation Prototype
+# Python 3.11+  (tested on 3.12 and 3.13). Keep this file ASCII-only: pip on a Chinese-locale
+# Windows reads it as GBK and stops at the first non-ASCII character.
+#
+# Install into a project virtual environment, not the global Python (see TEAM_GUIDE.md):
+#   python -m venv .venv
+#   .venv\Scripts\python -m pip install -r requirements.txt
 #
 # NOTE on torch: `ultralytics` pulls in `torch`/`torchvision`. For GPU (CUDA/MPS)
 # acceleration install the matching torch build first from https://pytorch.org
@@ -10,14 +15,25 @@ ultralytics>=8.3.0          # YOLO-World open-vocabulary detector
 supervision>=0.26.0         # YOLO dataset loading + IoU metrics (mAP, confusion matrix)
 opencv-python>=4.9.0        # image IO + annotation
 pillow>=10.0.0              # image handling
-numpy>=1.26.0
+numpy>=1.26.0,<2            # torch 2.3 wheels are built against numpy 1.x: with numpy 2.x
+                            # torch.from_numpy fails ("Numpy is not available")
 PyYAML>=6.0                 # config.yaml + dataset data.yaml
 requests>=2.31.0            # Ollama HTTP API (local VLM)
 matplotlib>=3.7.0           # PR-curve plots for threshold tuning (tune.py, Track B)
 anthropic>=0.40.0           # optional --api path (Claude vision); only needed with --api
 
-# ── Malaysian ALPR (alpr/, run_image.py, run_alpr.py) ─────────────────────────
+# -- Malaysian ALPR (alpr/, run_image.py, run_alpr.py) -----------------------------
 fast-plate-ocr>=1.1.0       # plate-specific OCR (default backend; model auto-downloads on first use)
-onnxruntime>=1.20           # runtime for fast-plate-ocr. If pip upgrades numpy to 2.x and torch
-                            # breaks, run:  pip install "numpy<2"  (onnxruntime works with numpy 1.26)
+onnxruntime>=1.20           # runtime for fast-plate-ocr (works with numpy 1.26)
 easyocr>=1.7.0              # optional generic OCR fallback (ocr_backend: easyocr)
+lap>=0.5.12                 # ByteTrack assignment (ultralytics would pip-install it on first use)
+imageio-ffmpeg>=0.5.1       # H.264 output videos (falls back to OpenCV MPEG-4 without it)
+openvino>=2024.0            # optional: OpenVINO export of the YOLO models, faster on Intel CPUs
+                            # (model_backend: openvino; see TEAM_GUIDE.md)
+
+# -- Traffic forecasting (alpr/forecast.py, alpr/congestion.py) --------------------
+yt-dlp>=2025.1              # downloading the recorded Causeway streams (alpr/download_hls.py)
+statsmodels>=0.14           # AR / ARIMA baselines
+packaging<26                # packaging 26.x rejects "3.0.0.dev0" on Python 3.12.0 betas, so patsy (and with it
+                            # statsmodels) fails to import
+lightgbm>=4.0               # gradient-boosted trees on lag features

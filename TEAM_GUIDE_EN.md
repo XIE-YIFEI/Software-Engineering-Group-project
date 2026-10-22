@@ -3,7 +3,8 @@
 [中文版 / Chinese version](TEAM_GUIDE.md)
 
 This project targets **Malaysian licence plates**: still-image recognition; vehicle tracking, plate reading and traffic
-counting in CCTV video; and lane-level flow and dangerous-driving detection (section 5).
+counting in CCTV video; lane-level flow and dangerous-driving detection (section 5); peak-congestion forecasting on the
+approach to the Johor Bahru checkpoint (section 10); and the speed-up (section 11).
 Every accuracy figure was measured on Malaysian data whose **plate text was checked by hand, plate by plate** (see
 "Evaluation method" below).
 
@@ -13,14 +14,26 @@ Every accuracy figure was measured on Malaysian data whose **plate text was chec
 
 ## 1. Setup
 
-Python 3.11 / 3.12. From the repository root:
+Python 3.11 / 3.12. Install into the project's own virtual environment `.venv` (already in .gitignore), not into the
+global Python. The reason: as soon as another project upgrades numpy to 2.x in the global environment (installing
+xgboost / shap / pyarrow does that), torch 2.3's `torch.from_numpy` fails with "Numpy is not available" and the video
+pipeline cannot run. From the repository root:
 
 ```bash
-pip install -r requirements.txt
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt        # macOS / Linux: .venv/bin/python -m pip ...
 ```
 
-Plate OCR uses `fast-plate-ocr` (its ~10 MB model downloads automatically on first run). If pip upgrades numpy to 2.x
-and torch starts failing, run `pip install "numpy<2"` (onnxruntime works fine with numpy 1.26).
+Then run every command with `.venv\Scripts\python` (or run `.venv\Scripts\activate` once and use plain `python`).
+`requirements.txt` pins `numpy<2`. In this venv all unit tests pass (now 76) and `malaysia_road_anpr` reproduces the committed
+JSON field by field (tested with torch 2.3.1+cpu, ultralytics 8.4.171, numpy 1.26.4, opencv-python 4.11.0.86).
+
+- Plate OCR uses `fast-plate-ocr` (its ~10 MB model downloads automatically on first run).
+- Keep `requirements.txt` ASCII-only: pip on a Chinese-locale Windows reads it as GBK and stops at the first non-ASCII
+  character.
+- `fast-plate-ocr` / `easyocr` also pull in `opencv-python-headless`. If it is installed after `opencv-python`, `cv2` has
+  no window support and the drawing window of `python -m alpr.lane_tool` fails with "The function is not implemented".
+  Fix: `.venv\Scripts\python -m pip install --force-reinstall --no-deps opencv-python==4.11.0.86`.
 
 ## 2. Still images
 
@@ -492,7 +505,7 @@ summary card). About 2 FPS on CPU only (vehicle detection at 1280 input is the b
 |---|---|
 | `config.yaml` / `config.py` | every threshold and one configuration (profile) per video; `image` is the still-image profile |
 | `image.py` | still images: whole-image plate detection → crop → OCR → Malaysian syntax |
-| `pipeline.py` | video: vehicle detection + ByteTrack tracking → plate detection → OCR → multi-frame voting → plate log → flow counting |
+| `pipeline.py` | video: vehicle detection + ByteTrack tracking → plate detection → OCR → multi-frame voting → plate log → flow counting; OpenVINO backend, headless mode, rotating-view filter (`view_gate`) (section 11) |
 | `ocr.py` | OCR backends: `fast_plate_ocr` (default) / `easyocr` (fallback) |
 | `plates.py` | Malaysian plate syntax: standard formats, special series (GOLD, VIP, 1M4U, PUTRAJAYA …), states, constrained decoding |
 | `voting.py` | weighted voting over one vehicle's readings across frames (close, sharp readings weigh more) |
@@ -504,10 +517,17 @@ summary card). About 2 FPS on CPU only (vehicle detection at 1280 input is the b
 | `trackers/bytetrack_small.yaml` | looser ByteTrack settings for small objects (distant motorcycles), used only by the lane camera |
 | `registry.py` | simulated registry (SQLite) + six verification rules + demo-registry generator (`python -m alpr.registry --make-demo`) |
 | `simulate.py` / `simulation.yaml` | builds the violation demo video: replaces chosen vehicles' plates with fictitious ones (`python -m alpr.simulate`) |
-| `hud.py` | rendering: CCTV dashboard (`dashboard`), dashcam AR card (`lead`), end-of-session summary card, plate badges, lane and event panels; Apple style (see section 9) |
+| `hud.py` | rendering: CCTV dashboard (`dashboard`), dashcam AR card (`lead`), end-of-session summary card, plate badges, lane and event panels, congestion forecast panel (`render_forecast_panel`); Apple style (see section 9) |
+| `congestion.py` | congestion measurement for distant, high cameras: keyframes → texture occupancy per zone → calibration to hand counts → vehicles, fill, queued zones → 1-minute series (section 10) |
+| `forecast.py` | seven forecasting models, past-only features, evaluation (MAE / RMSE, congestion precision / recall / warning time) and CLI |
+| `forecast_demo.py` / `forecast_figures.py` | time-lapse demo video with the forecast panel, and the figures of section 10 |
+| `series.py` | turns a lane camera's results JSON into 1-minute per-lane series (flow, occupancy, density, speed) |
+| `download_hls.py` | parallel download of recorded YouTube live streams (hourly pieces, resumable) |
+| `benchmark.py` | speed benchmark: time per stage, original setup vs OpenVINO / headless (section 11) |
+| `views/` | templates that recognise one view of a rotating stream (`view_gate`) |
 | `dataset.py` | reads YOLO labels (polygons / boxes) and builds the single-class plate training set |
 | `eval_images.py` / `evaluate.py` | image / video evaluation scripts |
-| `gt/` | hand-verified plate-text labels; `malaysia_selayang_lanes_0-120s.txt` holds the hand-counted per-lane crossings |
+| `gt/` | hand-verified plate-text labels; `malaysia_selayang_lanes_0-120s.txt` holds the hand-counted per-lane crossings; `causeway/` holds the hand counts of vehicles per zone and frame for the Causeway cameras |
 | `tests/test_alpr.py` | unit tests (`python alpr/tests/test_alpr.py`, no models or GPU needed) |
 
 ## 7. Evaluation method and known limitations
@@ -522,21 +542,23 @@ summary card). About 2 FPS on CPU only (vehicle detection at 1280 input is the b
 - **Known limitations**: small plates narrower than 60 px are still often misread; a few plates (e.g. `VCV 155`) make
   the OCR flip between two readings even when sharp, so they only reach "reading"; look-alike characters such as H/R
   and M/W can be misread briefly in shadow (corrected within about a second); diplomatic and dealer trade plates are not
-  supported; CPU only cannot reach real time.
+  supported; on the CPU, plate reading is not yet fully real time (OpenVINO + headless mode: section 11).
 - **Speeding / following distance** are computed only for calibrated cameras (section 5.3), and every speed carries an
   error bar; the calibration depends on the lane width and the measured dash cycle, so a new camera needs a new
   calibration.
 
 ## 8. Suggested next steps
 
-1. Flow prediction: train a time-series model on the `flow.per_10s` series (run the whole clip or longer videos).
-2. Lane-level flow and dangerous driving are done (section 5); next, use the per-lane `lanes.per_10s` series for
-   congestion prediction, or a YOLOP-style model to find lane lines automatically (no manual configuration).
-3. Plate verification: the rules and the simulated registry are done (section 4); with real / authorised registration
+1. Congestion forecasting has a first version (section 10); what it needs most is more days of data (several weeks,
+   including Fridays, weekends and holidays), then the comparison of 10.5 again.
+2. Lane-level flow and dangerous driving are done (section 5); a YOLOP-style model could find lane lines automatically
+   (no manual configuration).
+3. Real time: a CUDA build of torch on the RTX 5070 laptop GPU (section 11), followed by the accuracy regression.
+4. Plate verification: the rules and the simulated registry are done (section 4); with real / authorised registration
    data only `registry_path` needs to change. For a multi-camera deployment, write every recognition into the
    `sightings` table and the cross-camera `DUPLICATE` check will run on real data.
-4. AR / VR: the `lead` mode of `hud.py` already uses an AR-card style and can be connected to a glasses view.
-5. Generative AI: e.g. a VLM re-checking low-confidence plates, or automatically generated traffic reports.
+5. AR / VR: the `lead` mode of `hud.py` already uses an AR-card style and can be connected to a glasses view.
+6. Generative AI: e.g. a VLM re-checking low-confidence plates, or automatically generated traffic reports.
 
 ## 9. UI design and code optimisation (2026-10-15)
 
@@ -573,8 +595,304 @@ new UI is more complex, the whole run is about 25% faster.
 
 **Further improvements (not done this time)**:
 - Vehicle detection (YOLOv8s, ~140 ms/frame) is the biggest bottleneck on CPU; exporting to OpenVINO (Intel CPU) or
-  using a GPU could get close to real time, but needs new dependencies.
+  using a GPU could get close to real time, but needs new dependencies. (The OpenVINO part is done in section 11.)
 - `resolve_ligatures` in `voting.py` (the W↔VJ ligature fix) is legacy logic for EasyOCR, off by default, and can be
   deleted.
 - For live streams lasting several hours, the tracking state of vehicles that have left the frame should be pruned
   periodically (so far only tested on video clips).
+
+## 10. Peak-congestion forecasting (Part 3: machine learning / deep learning)
+
+Goal: from what the cameras measure on the road, forecast 5, 15 and 30 minutes ahead whether the road into the Johor
+Bahru checkpoint (CIQ, Bangunan Sultan Iskandar) will be congested.
+
+```bash
+# 1) download the recordings (YouTube live-stream archives, the best quality, 1080p; hourly pieces, parallel, resumable)
+python -m alpr.download_hls uAVdyvglPco 270 data/videos/causeway/jb_ciq_cam02_2023-03-22
+python -m alpr.download_hls uMBo-qx9M2U 270 data/videos/causeway/jb_ciq_ipc_2023-03-21 --end-sec 28440
+# 2) measure: decode only the keyframes (about one every 5 s) -> texture occupancy per zone; ~3 min per 10 h of video
+python -m alpr.congestion --profile jb_ciq_cam02_2023-03-22 --measure
+# 3) hand counts + calibration: writes enlarged zone crops; the counts go into alpr/gt/causeway/<profile>.txt
+python -m alpr.congestion --profile jb_ciq_cam02_2023-03-22 --gt-sheets 07:15 08:45
+python -m alpr.congestion --profile jb_ciq_cam02_2023-03-22 --calibrate
+# 4) 1-minute series: occupancy, vehicles, fill, queued zones
+python -m alpr.congestion --profile jb_ciq_cam02_2023-03-22 --series data/series/jb_ciq_cam02_2023-03-22.csv
+# 5) forecasting evaluation: train on one day, test on the other, both ways
+python -m alpr.forecast --days data/series/jb_ciq_ipc_2023-03-21.csv data/series/jb_ciq_cam02_2023-03-22.csv \
+    --entity "To CIQ" --measures fill --extra none --pool TC1,TC2,TC3,TC4 \
+    --congestion 0.5 --congestion-measure fill --out outputs/forecast/to_ciq_AC_fill_pool.json
+# 6) demo video (time-lapse + forecast panel) and the figures of this section
+python -m alpr.forecast_demo --profile jb_ciq_cam02_2023-03-22 --train data/series/jb_ciq_ipc_2023-03-21.csv \
+    --test data/series/jb_ciq_cam02_2023-03-22.csv --entity "To CIQ" --pool TC1,TC2,TC3,TC4 \
+    --from 05:30 --to 09:50 --every 10 --out demo/jb_ciq_forecast_timelapse.mp4
+python -m alpr.forecast_figures --out docs/images
+```
+
+Step 5 can be rerun without the videos: the 1-minute series and calibrations of the three cameras are in
+`docs/data/causeway/`; copy them to `data/series/`.
+
+### 10.1 Data: three recordings of about 10 hours each
+
+| Code | Recording | Camera / place | Date | Time used (on-screen clock) | Download |
+|---|---|---|---|---|---|
+| A | youtube.com/watch?v=uAVdyvglPco (Live Traffics 2/2) | "Camera 02 CIQ Traffics @JB": a high-rise view of the elevated approach road to the CIQ | Wed 22 Mar 2023 | 00:25–09:55 | 1080p, 8.6 GB |
+| C | youtube.com/watch?v=uMBo-qx9M2U (same channel) | the "IPC" camera: another building, the same approach road | Tue 21 Mar 2023 | 02:52–10:06 | 1080p, first 7.9 h only, 14 GB |
+| B | youtube.com/watch?v=MjUd_NZOa4U (Live Traffics 1/2) | the Causeway approach; four views take turns every 10 s, only the "Causeway Link" view is used | Fri 12 Jan 2024 | 00:25–11:12 | 1080p, 12 GB |
+
+![Zones of A (left) and C (right)](docs/images/causeway_zones.jpg)
+
+- The videos live on drive D (`D:\SECS_data\causeway`) and are used through the directory junction
+  `data/videos/causeway` (`data/` is not in the repository). Each hourly piece has a `.json` next to it with its start
+  second within the whole stream, used for the clock.
+- **Time follows the on-screen clock.** yt-dlp's `release_timestamp` (start of the live stream) differs from the
+  on-screen clock by a constant: −13 s for A (checked on 19 frames), +145 s for C (the first 40 minutes of the recording
+  have gaps, the offset jumps from −16 s to +145 s, so that part is not used), +15 s for B (the recording has a gap
+  between 03:27 and 04:15 and the offset is −10 s before it; B is not part of the forecasting evaluation, so +15 s is
+  used throughout).
+- **Is the camera fixed?** Checked on YouTube's thumbnail storyboard (one thumbnail every 10 s for the whole stream): A
+  and C show the same fixed view all night, with no cuts, pans or zooms. B rotates (four views, 10 s each); the
+  "Causeway Link" text at the bottom left is template-matched (`view_gate` in the profile) and only that view is
+  analysed (about 22 s per minute); tracking restarts every time the view comes back.
+- The planned pair was A and B, but B is another place on another day and cannot be the training / test partner of A,
+  so C was added: the same road as A, the day before, another camera. **The forecasting evaluation uses A↔C.**
+
+### 10.2 Measurement: why not detect vehicle by vehicle
+
+Both cameras sit on top of high-rise buildings. On the approach road to the CIQ the cars are only 15–40 px wide, the
+parapet of the elevated road hides their lower half, and in the morning queue they stand bumper to bumper. Even on 3×
+enlarged tiles at confidence 0.05, COCO's YOLOv8s finds 1 of the 38 cars queueing in camera C's four zones at 07:30, and
+5 of 53 at 09:30. So vehicles are not counted one by one; like a traffic engineer's video
+detector, the system measures *presence* (`alpr/congestion.py`):
+
+1. **Only keyframes are decoded** (about one every 5 s, PyAV `skip_frame=NONKEY`): 10 hours of video take about
+   3 minutes, roughly 200× real time.
+2. **Zones**: each direction is split into 4 zones along the road, e.g. `TC1`–`TC4` towards the CIQ (`TC1` at the CIQ
+   end, i.e. the head of the queue). The zones come from optical flow: the mean direction of motion of every pixel over
+   08:00–09:30 marks where each direction's traffic runs, which is then cut into equal parts along the road; checked
+   with `python -m alpr.lane_tool --show`.
+3. **Texture occupancy**: the share of a zone's pixels that lie on an edge (Sobel gradient ≥ 40 after a slight blur).
+   An empty road is smooth with a few lane markings and parapets; a queue is a dense texture of roofs, windows and gaps.
+   The markings and parapets that every frame has are a constant per zone, removed by the calibration below. (A first
+   version masked edges present in most frames of the day as "static background"; camera C's queue lasts all morning
+   and was masked with them, so that idea was dropped.)
+4. **Calibration to hand counts**: one line per zone, vehicles = a × occupancy + b (plus a constant under the street
+   lights at night).
+5. **Fill** = vehicles ÷ the zone's jam capacity (its largest hand count, i.e. a standstill queue). **Fill ≥ 0.5 is
+   congestion**: in the Greenshields traffic-flow model, once the density passes half the jam density (the critical
+   density) the flow falls as the density rises. Fill does not depend on the camera's distance or the zone's length, so
+   both cameras' data can be used together.
+
+### 10.3 Validation against hand counts (by lighting)
+
+Hand counts: each zone of a keyframe is enlarged and the vehicles whose wheels are inside it are counted
+(`alpr/gt/causeway/*.txt`; the system's numbers were not looked at while counting). A: 16 frames, C: 10 frames, four
+zones each. Errors are leave-one-out: each frame is left out in turn, the calibration is fitted on the others and
+then estimates the frame that was left out.
+
+| Towards the CIQ (sum of 4 zones) | C (Tuesday) | A (Wednesday) |
+|---|---|---|
+| All frames: mean error / mean count | 5.8 / 26.2 vehicles (22%), r = 0.95 | 7.0 / 21.6 vehicles (33%), r = 0.83 |
+| Night (street lights) | 2.3 vehicles (mean 4.2) | 2.3 vehicles (mean 4.2) |
+| Dawn + queue forming (06:45–08:15) | 8.7 vehicles (mean 26.0) | 12.2 vehicles (mean 19.8) |
+| Daylight queue (after 08:15) | 7.5 vehicles (mean 55.7) | 5.0 vehicles (mean 34.8) |
+| Correlation r of single zones | 0.88–0.95 | 0.80–0.90 |
+
+![Calibrated vehicles (blue line) and hand counts (orange dots)](docs/images/causeway_validation.png)
+
+- **Dawn is the weakest part**: on A at 07:15 the light is low and flat and the queue is underestimated (35 vehicles,
+  measured about 23); at 08:00–08:15 the sun is low, the railings glare, and a short gap in the queue is overestimated
+  (4–10 vehicles, measured about 22). The congestion starts exactly at dawn, so its measured start can be off by a few
+  minutes; the hand counts confirm that it started between 07:00 and 07:15 on both days (2–3 vehicles at 07:00,
+  35–38 at 07:15–07:30).
+- **B has no calibration and is not used for the forecasting evaluation**: B's peak towards Singapore is at night
+  (04:00–07:00), when the queue is one band of headlights that cannot be counted by eye; the uncalibrated values mix
+  lighting changes with traffic and cannot be trusted. B shows the measurement on another site and on a rotating view
+  (`view_gate`).
+
+### 10.4 Forecasting method (`alpr/forecast.py`)
+
+- **1-minute series** (`data/series/*.csv`): for every zone and direction, occupancy, the part above the night baseline
+  (excess), vehicles, fill, and queued zones (zones with fill ≥ 0.5).
+- **Targets**: the fill of the direction towards the CIQ (main measure, camera-independent) and the texture occupancy
+  (each camera's own units), 5 / 15 / 30 minutes ahead.
+- **Seven models**:
+
+| Model | What it does |
+|---|---|
+| persistence | future = now |
+| moving average | mean of the last 15 minutes |
+| daily profile | the other day's value at the same clock time (15-minute smoothing); uses nothing from the test day |
+| profile change | today's value + the other day's change from t to t+h (keeps today's level, borrows the other day's shape) |
+| ARIMA | statsmodels; order chosen by AIC on the training day ((2,1,1) / (1,1,1) chosen), parameters then fixed and the Kalman filter updated minute by minute on the test day |
+| LightGBM | lags, rolling means / standard deviations, 5-minute trend, time of day (sin/cos); one model per horizon, predicting the *change*; trained on the training day's 4 zone series as well (a global model, 5× the data) |
+| GRU (PyTorch) | the last 60 minutes + time of day, 24 hidden units, predicts the change; also trained on the 4 zone series; the last 20% of the training day is used for early stopping |
+
+- **Strictly past-only**: a unit test rewrites all data after t and checks that the features and all seven models'
+  forecasts made at t do not change.
+- **Train on one day, test on the other, both ways** (C→A, A→C). All models are scored on exactly the same forecast
+  origins (where every model has a forecast and the target exists; about 400 origins on A, 340 on C).
+- **Congestion episodes**: congested while the 5-minute mean fill is ≥ 0.5; a dip shorter than 10 minutes stays part
+  of the episode; an onset is the start of an episode lasting ≥ 10 minutes. **Warning time** = how many minutes before
+  the onset a forecast made while the road was still free first said "congested at t+h".
+
+### 10.5 Results
+
+Lower is better, bold is the best in its column, RMSE in brackets. A fill of 0.05 is about 2 vehicles on A and 3 on C.
+
+**Fill (towards the CIQ): MAE (RMSE)**
+
+| Model | A +5 | A +15 | A +30 | C +5 | C +15 | C +30 |
+|---|---|---|---|---|---|---|
+| persistence | 0.032 (0.050) | 0.054 (0.096) | 0.078 (0.145) | 0.055 (0.082) | 0.090 (0.139) | 0.133 (0.197) |
+| moving average | 0.042 (0.075) | 0.062 (0.116) | 0.088 (0.157) | 0.070 (0.109) | 0.101 (0.155) | 0.140 (0.211) |
+| daily profile | 0.076 (0.127) | 0.077 (0.128) | 0.079 (0.131) | 0.093 (0.143) | 0.095 (0.145) | **0.098 (0.148)** |
+| profile change | 0.036 (0.054) | 0.064 (0.102) | 0.094 (0.145) | 0.054 (0.080) | 0.088 (0.127) | 0.119 (0.168) |
+| ARIMA | **0.031 (0.050)** | **0.054 (0.097)** | **0.078 (0.145)** | 0.054 (0.082) | 0.089 (0.139) | 0.134 (0.197) |
+| LightGBM | 0.038 (0.058) | 0.057 (0.094) | 0.093 (0.136) | 0.053 (0.079) | 0.083 (0.116) | 0.098 (0.135) |
+| GRU | 0.037 (0.054) | 0.061 (0.091) | 0.087 (0.125) | **0.053 (0.077)** | **0.076 (0.108)** | 0.112 (0.153) |
+
+**Congestion (fill ≥ 0.5)**: A started at 07:13 and 08:17 (it cleared once, 08:00–08:15), C at 07:12.
+
+| Model | A +15 precision / recall | A +30 precision / recall | A +30 warning (min) | C +15 precision / recall | C +30 precision / recall | C +30 warning | +30 false alarms (A, C) |
+|---|---|---|---|---|---|---|---|
+| persistence | 0.93 / 0.80 | 0.94 / 0.72 | 3, 1 | 1.00 / 0.91 | 1.00 / 0.82 | 1 | 0, 0 |
+| moving average | 0.92 / 0.78 | 0.91 / 0.68 | 0, 10 | 1.00 / 0.87 | 1.00 / 0.77 | 0 | 0, 0 |
+| daily profile | 0.93 / 1.00 | 0.93 / 1.00 | 31, 10 | 1.00 / 0.93 | 1.00 / 0.93 | 30 | 0, 0 |
+| profile change | 0.94 / 0.90 | 0.94 / 0.80 | 28, 2 | 1.00 / 0.94 | 0.97 / 0.92 | 33 | 0, 1 |
+| ARIMA | 0.93 / 0.80 | 0.94 / 0.72 | 3, 1 | 1.00 / 0.91 | 1.00 / 0.82 | 1 | 0, 0 |
+| LightGBM | 0.94 / 0.90 | 0.95 / 0.75 | 17, 3 | 1.00 / 0.99 | 0.96 / 0.96 | 35 | 0, 1 |
+| GRU | 0.93 / 0.92 | 0.93 / 0.85 | 7, 10 | 1.00 / 0.95 | 1.00 / 0.93 | 18 | 0, 0 |
+
+**Texture occupancy: MAE** (each camera's own units)
+
+| Model | A +5 | A +15 | A +30 | C +5 | C +15 | C +30 |
+|---|---|---|---|---|---|---|
+| persistence | 0.012 | 0.021 | 0.032 | 0.013 | 0.022 | 0.035 |
+| daily profile | 0.187 | 0.187 | 0.187 | 0.187 | 0.186 | 0.185 |
+| profile change | **0.011** | **0.018** | **0.025** | 0.013 | **0.020** | **0.028** |
+| ARIMA | 0.012 | 0.021 | 0.032 | **0.012** | 0.022 | 0.036 |
+| LightGBM | 0.015 | 0.024 | 0.034 | 0.016 | 0.028 | 0.029 |
+| GRU | 0.016 | 0.043 | 0.069 | 0.013 | 0.022 | 0.046 |
+
+![Both test days: measured fill and the forecasts made 30 minutes earlier](docs/images/forecast_to_ciq.png)
+
+Findings:
+1. **5 minutes**: ARIMA / persistence are the hardest to beat (the AIC-chosen orders (2,1,1) / (1,1,1) behave almost
+   like persistence). This is the usual result in traffic forecasting: little changes within a few minutes.
+2. **15–30 minutes**: the machine-learning models start to help. On test day C the GRU cuts the 15-minute error from
+   0.090 to 0.076 (−16%) and LightGBM the 30-minute error from 0.133 to 0.098 (−26%); on test day A the differences are
+   small (30 minutes: ARIMA 0.078, GRU 0.087, but the GRU has the lowest RMSE, i.e. fewer large misses).
+3. **Early warning**: persistence / ARIMA only notice the congestion once it has started (1–3 minutes); the daily
+   profile, profile change and LightGBM warn about half an hour ahead (A 07:13: 31 / 28 / 17 minutes; C 07:12: 30 / 33 /
+   35 minutes) with almost no false alarms (0–1). Before A's second onset at 08:17 the road had been free for only
+   about 10 minutes, so no model warns more than 10 minutes ahead of it.
+4. **Occupancy**: profile change is best (A, 30 minutes: 0.025 vs 0.032 for persistence). Taking the other day's
+   occupancy directly (daily profile) fails because the two cameras have different scales (error 0.187), which is why
+   fill is the main measure.
+5. Both machine-learning models were trained on "1 day × 5 series", clearly better than on one series (e.g. A→C,
+   15 minutes: LightGBM 0.114 → 0.083).
+
+### 10.6 Limitations (stated honestly)
+
+- **Only 2 days, 2 cameras, 1 road and 3 congestion onsets**: differences of 0.01 in the tables are not statistically
+  significant; they show that the method works end to end and which kinds of model look promising. A reliable
+  conclusion needs at least several weeks of data (including Fridays, weekends, school and public holidays).
+- The daily profile works because the queue started at almost the same time on Tuesday and Wednesday (07:12 / 07:13).
+  On a holiday or after an incident at the checkpoint it will be wrong; the machine-learning models also look at the
+  current trend and should cope better, but these two days cannot show it.
+- Measurement error: 22–33% per frame (worst at dawn), less after the 1-minute averaging; it affects both the training
+  targets and the scores.
+- Flow (vehicles per minute) and speed cannot be measured on these cameras: the vehicles are too small to be tracked
+  one by one, and there is no metric calibration (a lane width, but no scale along the road). So the series here are
+  occupancy and density only. The Selayang camera of section 5 has flow and speed (`python -m alpr.series` turns its
+  results into 1-minute series), but its 2-minute clip is too short for forecasting.
+- B has no calibration and is not used for forecasting (see 10.3).
+
+### 10.7 Dashboard panel and demo video
+
+![Congestion forecast dashboard (camera A at 07:41, the approach to the CIQ congested)](docs/images/forecast_dashboard.jpg)
+
+- **Forecast panel** (`hud.render_forecast_panel`, reusing the dashboard's frosted glass, palette and fonts): a status
+  pill ("Congested now" / "Congestion in ~X min" / "Free flow"), the last hour as measured (blue line), the forecast made
+  15 minutes earlier (dashed, so you can see at a glance whether the forecasts were right), the current forecast for
+  +5 / +15 / +30 minutes with an error band (the model's mean error on the last 30% of the training day, which that fit
+  did not see), and three number tiles. It appears in the lane sidebar whenever `lanes["forecast"]` is set; the
+  existing lane camera is unchanged.
+- **Demo video**: `demo/jb_ciq_forecast_timelapse.mp4` (51 s, 1920×1080, 26 MB): camera A from 05:30 to 09:50, one
+  keyframe per 10 s of camera time (300× speed): empty roads at night → the queue starts at 07:13 → it clears briefly
+  at 08:00 → full again from 08:17. The model was trained on C only (the day before, another camera).
+- **JSON**: `demo/jb_ciq_forecast_timelapse.forecast.json` holds the test day's measured fill per minute and the
+  +5 / +15 / +30 forecasts made at every minute; the JSON written by `python -m alpr.forecast --out` holds all seven
+  models' forecasts and scores.
+- **Unit tests**: all 76 pass (the original 70 + 6 new: past-only features, past-only forecasts of all seven models,
+  error and warning-time computation, the clock of the 1-minute series, rendering and status text of the forecast
+  panel, zone measurement + calibration + 1-minute series). The lane dashboard, lane summary card and plate dashboard
+  render pixel-identically before and after the change.
+
+## 11. Speed-up and real time (OpenVINO + headless mode)
+
+```bash
+python run_alpr.py --profile malaysia_road_anpr --backend openvino --headless   # no rendering, no video: JSON only
+python -m alpr.benchmark --profile malaysia_road_anpr --frames 300              # time per stage: original vs new setup
+# the first --backend openvino run exports to <model name>_openvino_model/ (not committed); by hand:
+python -c "from ultralytics import YOLO; YOLO('yolov8s.pt').export(format='openvino', dynamic=True)"
+python -c "from ultralytics import YOLO; YOLO('models/plate_malaysia.pt').export(format='openvino', dynamic=True)"
+```
+
+| Video (300 frames, same window) | original | .pt + OCR fix | .pt headless | OpenVINO | **OpenVINO headless** | speed-up |
+|---|---|---|---|---|---|---|
+| road ANPR 1496×945, 30 FPS | 3.4 | 5.6 | 7.1 | 7.1 | **10.5** | **3.1×** |
+| guardhouse 1920×924, 30 FPS | 3.4 | 7.5 | 9.9 | 9.4 | **15.3** | **4.5×** |
+| violation check 1496×944, 30 FPS | 5.6 | 7.2 | 9.3 | 9.3 | **14.8** | **2.7×** |
+| Selayang lanes 1920×1080, 30 FPS (imgsz 1280) | 2.8 | 2.9 | 3.2 | 3.9 | **5.1** | **1.8×** |
+
+| Time per frame (ms, road ANPR) | original | OpenVINO headless |
+|---|---|---|
+| decode | 6.0 | 6.1 |
+| vehicle detection + tracking | 156.6 | 36.8 |
+| plate detection | 81.0 | 45.6 |
+| OCR | 7.0 | 6.1 |
+| rendering | 39.8 | 0.0 |
+| video encoding | 2.7 | 0.0 |
+| other | 0.7 | 0.4 |
+| total | 294 | 95 |
+
+(Intel Core Ultra 9 275HX, CPU only; each configuration runs 20 warm-up frames, then 300 timed frames. "original" = the code before this change: .pt models, dashboard rendered, video written, ONNX Runtime default threads. OpenVINO headless on the integrated GPU (FP16) runs at 17.4 FPS but does not give exactly the CPU's results, see below.)
+
+Changes (`alpr/pipeline.py`, `alpr/ocr.py`, `run_alpr.py`):
+1. **The real bottleneck found**: ONNX Runtime, used by the plate OCR, takes all 24 cores by default and keeps its
+   threads spinning after every call, which slowed the YOLO models running in between by 2–3× (vehicle detection on the
+   same clip: 153 ms/frame → 46 ms/frame). The OCR now uses 2 threads without spinning (`ocr_threads: 2`; 0 = the old
+   behaviour).
+2. **OpenVINO** (`model_backend: openvino` or `--backend openvino`): both YOLO models (vehicles, plates) are exported to
+   OpenVINO (CPU, FP32, dynamic input size, so the letterboxing is exactly that of the .pt); inference is about 40%
+   faster. Without openvino, or if the export fails, the .pt is used.
+3. **Headless mode** (`headless: true` or `--headless`): no dashboard rendering and no video, only the results JSON
+   (plates, flow, per-lane series).
+4. For flow / lanes without plates, `--no-plates` skips plate detection and OCR.
+
+**Accuracy did not change**: with OpenVINO + headless mode, the four benchmarks give results JSON identical, field by
+field, to the committed ones (plates, confidences, votes, track ids, first / last frames, alerts, flow, per-lane
+crossings):
+- `malaysia_road_anpr` (100–130 s): 8/9, 0 false positives;
+- `malaysia_guardhouse`, whole clip: 5/5, 0 false positives;
+- `malaysia_road_violations`: 7/7 violations, 0 false alerts;
+- `malaysia_selayang_lanes`: all 355 crossings identical, per-lane accuracy 92.5% (all vehicles) / 96.2% (four-wheeled);
+  the 10-second series has the same values, with one new field per row, `observed_sec` (how many of those 10 seconds
+  were analysed; less than 10 on a rotating view).
+
+Frame sampling was not changed (`frame_step` keeps its value), so these numbers do not depend on it. The new venv on
+its own also reproduces the committed results field by field (section 1).
+
+**GPU and NPU**: OpenVINO on the integrated GPU (Intel Graphics) and the NPU runs in FP16 and is faster (about 10 ms
+per inference against 30 ms on the CPU), but its outputs differ from the CPU's (up to 13 in the raw output on the
+iGPU) and would change detections, so the CPU stays the default (`--ov-device GPU` to try). This laptop also has an
+RTX 5070 GPU: the venv's torch 2.3.1 is the CPU build, and the RTX 50 series needs a CUDA 12.8 build of torch (2.7 or
+newer). Installing a CUDA build of torch (about 3 GB) is the next step to full real time, followed by the accuracy
+regression above.
+
+**Real time**:
+- Plates + flow (road ANPR, 30 FPS video): 3.4 FPS before, 10.5 FPS now (35% of real time); 1.8–4.5× across the four
+  scenes (table above). Two runs of the same setting differ by about ±20% (another run gave 13.2 FPS); the table comes
+  from one continuous run. The CPU alone does not reach 30 FPS yet; the RTX 5070 GPU is the next step.
+- Congestion measurement (section 10): keyframes only, about 3 minutes per 10 hours of video, roughly 200× real time, so a live stream is easy to keep up with; the forecast itself runs once a minute and costs next to nothing.

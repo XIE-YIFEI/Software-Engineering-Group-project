@@ -43,12 +43,20 @@ def _as_list(crops: Crops) -> List[np.ndarray]:
 
 
 class FastPlateOCR:
-    def __init__(self, model: str = "cct-s-v2-global-model", device: str = "auto"):
+    def __init__(self, model: str = "cct-s-v2-global-model", device: str = "auto", threads: int = 2):
         import onnxruntime as ort
         from fast_plate_ocr import LicensePlateRecognizer
 
         opts = ort.SessionOptions()
         opts.log_severity_level = 3          # silence harmless shape-inference warnings
+        # The OCR model is tiny (~2 ms per plate). ONNX Runtime's default pool takes every core and keeps its
+        # threads spinning after each call, which starved the YOLO models running in between: the vehicle
+        # detector took 153 ms per frame instead of 46 ms (measured, TEAM_GUIDE.md section 11).
+        # threads 0 = ONNX Runtime's default (the old behaviour, for benchmarks).
+        if threads > 0:
+            opts.intra_op_num_threads = threads
+            opts.inter_op_num_threads = 1
+            opts.add_session_config_entry("session.intra_op.allow_spinning", "0")
         self._rec = LicensePlateRecognizer(model, device=device, sess_options=opts)
         cfg = self._rec.config
         self.alphabet, self.pad_char = cfg.alphabet, cfg.pad_char
@@ -152,11 +160,11 @@ class EasyPlateOCR:
 PlateOCR = EasyPlateOCR      # backwards-compatible name
 
 
-def make_ocr(backend: str = "fast_plate_ocr", model: str = "cct-s-v2-global-model"):
+def make_ocr(backend: str = "fast_plate_ocr", model: str = "cct-s-v2-global-model", threads: int = 2):
     """OCR engine by name; falls back to EasyOCR when fast-plate-ocr is not installed."""
     if backend == "fast_plate_ocr":
         try:
-            return FastPlateOCR(model)
+            return FastPlateOCR(model, threads=threads)
         except ImportError as e:
             warnings.warn(f"fast-plate-ocr unavailable ({e}); falling back to EasyOCR. "
                           "Install with: pip install fast-plate-ocr onnxruntime")

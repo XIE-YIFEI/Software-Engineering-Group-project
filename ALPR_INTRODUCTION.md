@@ -19,6 +19,7 @@
 | **视频车牌识别** | 车辆检测 + ByteTrack 多目标跟踪 → 车辆内车牌检测 → OCR → 同一辆车多帧加权投票，结果分为 ACQUIRING / TENTATIVE / CONFIRMED |
 | **车牌日志（去重）** | 每辆车只记一行；同一辆车被遮挡后重新出现（换了跟踪 ID）也不会重复计数 |
 | **车流统计** | 计数线过线计数、分车型统计（轿车/摩托/巴士/卡车）、每分钟流量、每 10 秒时间序列（可作为车流预测的训练数据） |
+| **高峰拥堵预测** | 新山关卡（CIQ）进站路的高位摄像头：只解码关键帧测量每个区段被车辆占满的程度（按人工计数校准），每分钟序列；7 个模型（持续、移动平均、日间规律、规律变化、ARIMA、LightGBM、GRU）提前 5 / 15 / 30 分钟预测拥堵，仪表盘上有预测面板 |
 | **车道级车流与危险驾驶** | 每个固定摄像头配置车道多边形、行驶方向和实线；分车道计数、veh/min、占有率、密度和每 10 秒时间序列；变道、压实线、逆行、车道内停车；标定后测速和跟车过近（每个速度都带误差）。公开视频里真实车辆的违规不显示，只用标注清楚的模拟车辆演示 |
 | **车牌核验与告警** | 每块确认的车牌对照**模拟**车辆登记库检查：未登记、路税过期、非法格式、黑名单、车型不符、套牌（两辆车同时挂同一车牌 / 跨摄像头不可能的行驶），告警显示在仪表盘和 JSON 里 |
 | **马来西亚车牌规则** | 标准格式（如 `WA 1234 B`）、双排车牌、特殊号牌（GOLD、VIP、1M4U、PUTRAJAYA 等）、州属识别（Johor、Sabah、Sarawak、出租车、军车…），非法/非标准文字会被标记出来 |
@@ -98,7 +99,24 @@
 
 ![Lane dashboard](docs/images/lanes_dashboard.jpg)
 
+**高峰拥堵预测（新山关卡进站路，两天约 10 小时的录播）**：两台高楼摄像头（A：周三；C：前一天周二，另一台摄像头、同一条路）
+从夜里空路一直拍到早高峰排队。车太小、被护栏挡住，无法逐辆检测，所以测量"区段被车占满的程度"（fill，按人工计数校准；
+fill ≥ 0.5 即超过 Greenshields 模型的临界密度，算拥堵），一天训练、另一天测试，两个方向都做：
+
+| | A（周三，用 C 训练） | C（周二，用 A 训练） |
+|---|---|---|
+| 测量与人工计数对比（留一法，4 个区段合计） | 平均误差 7.0 辆 / 平均 21.6 辆，r = 0.83 | 5.8 辆 / 26.2 辆，r = 0.95 |
+| 拥堵开始（人工计数确认在 07:00–07:15 之间） | 07:13（08:17 再次开始） | 07:12 |
+| 15 分钟预测误差（fill）：持续 → 最好的模型 | 0.054 → 0.054（ARIMA） | 0.090 → **0.076**（GRU） |
+| 30 分钟预测误差（fill）：持续 → 最好的模型 | 0.078 → 0.078（ARIMA） | 0.133 → **0.098**（LightGBM） |
+| 提前预警（30 分钟预测，07:1x 那次） | 日间规律 31 分钟，LightGBM 17 分钟，持续 3 分钟 | LightGBM 35 分钟，日间规律 30 分钟，持续 1 分钟 |
+
+只有两天、三次拥堵开始，差距没有统计意义，详见 [TEAM_GUIDE.md](TEAM_GUIDE.md) 第 10 节（包括局限）。
+
+![Congestion forecast](docs/images/forecast_dashboard.jpg)
+
 **演示视频**：
+- **高峰拥堵预测（延时，51 秒）**：`demo/jb_ciq_forecast_timelapse.mp4`（1920×1080，A 摄像头 05:30–09:50，300 倍速）
 - **车道级车流与危险驾驶（场景三，2 分 8 秒，含结尾汇总表）**：`demo/malaysia_selayang_lanes_demo.mp4`（1920×1080）
 - **违规识别（主演示，2 分 43 秒，含结尾汇总表）**：`demo/malaysia_road_violations_demo.mp4`（1920×1080）
 - 场景一（路边摄像头 + 车牌核验告警）：`demo/malaysia_road_anpr_demo_30s.mp4`（1920×1080，30 秒）
@@ -107,7 +125,10 @@
 ### 快速开始
 
 ```bash
-pip install -r requirements.txt
+# 装在项目自己的虚拟环境里（全局 Python 被别的项目升到 numpy 2.x 时 torch 会报错），之后的命令都用 venv 的 python
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\activate
 
 # 静态图片（单张 / 文件夹 / 通配符），结果在 outputs/images_alpr/
 python run_image.py --source path/to/images
@@ -132,6 +153,17 @@ python run_image.py --source path/to/images --check
 # 评测
 python -m alpr.eval_images --dataset "../Malaysian Car Plate Dataset" --split val --gt alpr/gt/malaysia_val_plates.csv
 python -m alpr.evaluate --pred outputs/malaysia_road_anpr_30s.plates.json --gt alpr/gt/malaysia_road_anpr_100-130s.txt
+
+# 高峰拥堵预测（第 10 节）：下载录播、测量、校准、每分钟序列、预测评测、演示视频
+python -m alpr.download_hls uAVdyvglPco 270 data/videos/causeway/jb_ciq_cam02_2023-03-22
+python -m alpr.congestion --profile jb_ciq_cam02_2023-03-22 --measure
+python -m alpr.congestion --profile jb_ciq_cam02_2023-03-22 --calibrate --series data/series/jb_ciq_cam02_2023-03-22.csv
+python -m alpr.forecast --days data/series/jb_ciq_ipc_2023-03-21.csv data/series/jb_ciq_cam02_2023-03-22.csv --entity "To CIQ" --measures fill --extra none --pool TC1,TC2,TC3,TC4 --congestion 0.5 --congestion-measure fill
+python -m alpr.forecast_demo --profile jb_ciq_cam02_2023-03-22 --train data/series/jb_ciq_ipc_2023-03-21.csv --test data/series/jb_ciq_cam02_2023-03-22.csv --pool TC1,TC2,TC3,TC4 --from 05:30 --to 09:50 --out demo/jb_ciq_forecast_timelapse.mp4
+
+# 提速（第 11 节）：OpenVINO + 无界面模式，测速
+python run_alpr.py --profile malaysia_road_anpr --backend openvino --headless
+python -m alpr.benchmark --profile malaysia_road_anpr --frames 300
 
 # 单元测试（不需要模型和 GPU）
 python alpr/tests/test_alpr.py
@@ -198,6 +230,25 @@ flowchart LR
 违规规则用**模拟车辆**演示（紫色、标注 "Simulated"、虚构 X 字头车牌、路面坐标定义的轨迹），模拟车辆不计入车流。
 详见 [TEAM_GUIDE.md](TEAM_GUIDE.md) 第 5 节。
 
+### 高峰拥堵预测
+
+```mermaid
+flowchart LR
+    A[录播关键帧<br/>约每 5 秒] --> B[区段纹理占有率]
+    B --> C[按人工计数校准<br/>车辆数 / fill]
+    C --> D[每分钟序列]
+    D --> E[7 个预测模型<br/>+5 / +15 / +30 分钟]
+    E --> F[预测面板 / JSON / 延时视频]
+```
+
+- **为什么不逐辆检测**：CIQ 进站路上的车只有 15–40 像素宽、下半截被护栏挡住、排队时车头接车尾，COCO 检测器在放大 3 倍的小块上
+  也只能找出不到一成（38 辆里 1 辆，53 辆里 5 辆）。改为像交通工程的视频检测器一样测"占有"：区段里边缘像素的比例，用人工计数逐区段校准成车辆数。
+- **验证**：A 数了 16 帧、C 数了 10 帧（夜间、黎明、白天都有）；夜间误差约 2 辆，黎明最差（低光和护栏反光）。
+- **预测**：严格只用过去的数据（单元测试检查），一天训练、另一天测试；LightGBM 和 GRU 用训练日 4 个区段的序列一起训练。
+  5 分钟内持续 / ARIMA 最难超越；15–30 分钟机器学习模型更好；日间规律和 LightGBM 能提前约半小时预警。
+- **B（长堤引道，轮播画面）**：用 `view_gate` 只分析 "Causeway Link" 画面；夜里的车灯无法人工计数，所以没有校准，不用于预测评测。
+- **局限**：只有 2 天、2 台摄像头、1 条路；这些摄像头上测不了流量和速度（车太小、没有米制标定）。
+
 ### 代码结构
 
 | 路径 | 作用 |
@@ -215,7 +266,13 @@ flowchart LR
 | `alpr/lane_tool.py` / `alpr/lane_eval.py` | 车道点击绘制工具 / 分车道计数评测（含 slit-scan 人工计数图） |
 | `alpr/registry.py` | 模拟登记库（SQLite）、核验规则、模拟库生成 |
 | `alpr/simulate.py` / `alpr/simulation.yaml` | 生成违规演示视频：把指定车辆的车牌替换成虚构车牌 |
-| `alpr/hud.py` | 仪表盘和 AR 界面渲染 |
+| `alpr/hud.py` | 仪表盘和 AR 界面渲染（含拥堵预测面板） |
+| `alpr/congestion.py` | 拥堵测量：关键帧 → 区段纹理占有率 → 校准 → 车辆数 / fill / 排队区段 → 每分钟序列 |
+| `alpr/forecast.py` | 7 个预测模型、只用过去的特征、评测（MAE / RMSE、拥堵精确率 / 召回率 / 提前量） |
+| `alpr/forecast_demo.py` / `alpr/forecast_figures.py` | 延时演示视频 / 文档插图 |
+| `alpr/series.py` | 车道摄像头结果 JSON → 每分钟分车道序列 |
+| `alpr/download_hls.py` | 多连接下载 YouTube 直播录播 |
+| `alpr/benchmark.py` | 测速（各阶段耗时） |
 | `alpr/gt/` | 人工核对的车牌标注（图片 + 视频） |
 | `models/plate_malaysia.pt` | 在马来西亚车牌数据集上微调的车牌检测器（默认） |
 | `models/finetuned.pt` | 旧版车牌检测器（印度车牌数据） |
@@ -235,15 +292,20 @@ flowchart LR
   （https://www.youtube.com/watch?v=KGHhxfkqypg）的 15:00–17:00，同样版权归原作者、仓库不含原视频。该视频没有 137 格式，
   用 1080p60（格式 299）的片段下载，需要 ffmpeg（imageio-ffmpeg 自带一个）：
   `python -m yt_dlp -f 299 --download-sections "*900-1020" --ffmpeg-location <ffmpeg 路径> -o data/videos/malaysia_selayang_overhead.mp4 https://www.youtube.com/watch?v=KGHhxfkqypg`
+- 拥堵预测素材：Causeway Link 交通直播的录播（Live Traffics 2/2：https://www.youtube.com/watch?v=uAVdyvglPco 、
+  https://www.youtube.com/watch?v=uMBo-qx9M2U ；Live Traffics 1/2：https://www.youtube.com/watch?v=MjUd_NZOa4U ），
+  版权归原作者，仓库不含原视频；用 `python -m alpr.download_hls <视频 ID> 270 <目录>` 下载（1080p，每段约 9–14 GB）。
 
 ### 已知局限与下一步
 
-- 纯 CPU 约 3–5 FPS（含界面渲染），实时需要 GPU 或导出 OpenVINO / ONNX；宽度小于 60 像素的车牌仍容易读错。
+- 纯 CPU：原来约 3–5 FPS（含界面渲染）；OpenVINO + 无界面模式下明显更快，识别结果逐项不变（数字见 [TEAM_GUIDE.md](TEAM_GUIDE.md) 第 11 节），
+  但 30 FPS 视频仍未完全实时，下一步是用 RTX 5070 独显（CUDA 版 torch）；宽度小于 60 像素的车牌仍容易读错。
+- 拥堵预测：只有 2 天、2 台摄像头、3 次拥堵开始，模型之间的差距没有统计意义；测量在黎明误差最大；需要几周的数据再比较。
 - 车牌核验用的是模拟登记库；在其他时间窗口运行时，未标注的真实车牌会显示 `UNMATCHED`，只表示"不在模拟库里"。
 - 车道级：车道是每个摄像头手工配置的；远处的小摩托车仍会漏检（见上表）；拥堵方向没有人工计数，没有准确率；
   测速依赖标定，每个速度都带误差；真实视频里的违规不公开显示。
-- **下一步**：车流 / 拥堵预测（用 `flow.per_10s` 和分车道的 `lanes.per_10s` 时间序列）、接入真实/授权的登记数据和多摄像头识别记录、
-  AR/VR 显示、生成式 AI（例如复核低置信度车牌、自动生成交通报告）。
+- **下一步**：更多天的拥堵数据、接入真实/授权的登记数据和多摄像头识别记录、AR/VR 显示、
+  生成式 AI（例如复核低置信度车牌、自动生成交通报告）。
 
 ---
 
@@ -261,6 +323,7 @@ prediction, AR/VR and generative AI. What the code does today:
 | **Video ALPR** | Vehicle detection + ByteTrack multi-object tracking → plate detection inside each vehicle → OCR → weighted multi-frame voting per vehicle, with ACQUIRING / TENTATIVE / CONFIRMED status |
 | **Plate log (de-duplicated)** | One row per vehicle; a vehicle re-acquired after an occlusion (new track ID) is not counted twice |
 | **Traffic flow** | Counting-line crossings, per-type counts (car / motorcycle / bus / truck), vehicles per minute, 10-second time series (training data for flow prediction) |
+| **Peak-congestion forecasting** | High cameras over the approach road to the Johor Bahru checkpoint (CIQ): only keyframes are decoded to measure how full each zone of the road is (calibrated to hand counts), as 1-minute series; seven models (persistence, moving average, daily profile, profile change, ARIMA, LightGBM, GRU) forecast congestion 5 / 15 / 30 minutes ahead; a forecast panel on the dashboard |
 | **Lane-level flow & dangerous driving** | Per fixed camera: lane polygons, direction of travel and solid lines; per-lane counts, veh/min, occupancy, density and 10-second time series; lane change, solid-line crossing, wrong way, stopped in a lane; speed and tailgating once the camera is calibrated (every speed with an error bar). On public footage real vehicles are never shown as violators; clearly marked simulated vehicles demonstrate the rules |
 | **Plate verification & alerts** | Every confirmed plate is checked against a **simulated** vehicle registry: unmatched, expired road tax, illegal format, blacklisted, wrong vehicle type, duplicate / cloned plate (two vehicles in view with one plate, or an impossible trip between cameras); alerts show on the dashboard and in the JSON |
 | **Malaysian plate rules** | Standard format (e.g. `WA 1234 B`), two-row plates, special series (GOLD, VIP, 1M4U, PUTRAJAYA …), registration state (Johor, Sabah, Sarawak, taxi, military …); non-standard text is flagged |
@@ -348,7 +411,27 @@ trucks on the line, motorcycles filtering along the lane lines), so no accuracy 
 
 ![Lane dashboard](docs/images/lanes_dashboard.jpg)
 
+**Peak-congestion forecasting (approach road to the Johor Bahru checkpoint, two recordings of about 10 hours)**: two
+high-rise cameras (A: a Wednesday; C: the Tuesday before, another camera on the same road) film from empty roads at
+night into the morning queue. The vehicles are too small and too hidden by the parapets to be detected one by one, so
+the system measures how full each zone is (fill, calibrated to hand counts; fill ≥ 0.5 is past the critical density of
+the Greenshields model, i.e. congested). Train on one day, test on the other, both ways:
+
+| | A (Wednesday, trained on C) | C (Tuesday, trained on A) |
+|---|---|---|
+| Measurement vs hand counts (leave-one-out, sum of 4 zones) | mean error 7.0 / mean 21.6 vehicles, r = 0.83 | 5.8 / 26.2 vehicles, r = 0.95 |
+| Congestion onset (hand counts: between 07:00 and 07:15) | 07:13 (again at 08:17) | 07:12 |
+| 15-minute forecast error (fill): persistence → best model | 0.054 → 0.054 (ARIMA) | 0.090 → **0.076** (GRU) |
+| 30-minute forecast error (fill): persistence → best model | 0.078 → 0.078 (ARIMA) | 0.133 → **0.098** (LightGBM) |
+| Early warning (30-minute forecast, the 07:1x onset) | daily profile 31 min, LightGBM 17 min, persistence 3 min | LightGBM 35 min, daily profile 30 min, persistence 1 min |
+
+With only two days and three onsets the differences are not statistically significant; details, including the
+limitations: [TEAM_GUIDE_EN.md](TEAM_GUIDE_EN.md), section 10.
+
+![Congestion forecast](docs/images/forecast_dashboard.jpg)
+
 **Demo videos**:
+- **peak-congestion forecast (time-lapse, 51 s)**: `demo/jb_ciq_forecast_timelapse.mp4` (1920×1080, camera A 05:30–09:50, 300× speed)
 - **lane-level flow and dangerous driving (scene 3, 2 min 8 s incl. summary card)**: `demo/malaysia_selayang_lanes_demo.mp4` (1920×1080)
 - **violation check (main demo, 2 min 43 s incl. summary card)**: `demo/malaysia_road_violations_demo.mp4` (1920×1080)
 - scene 1 (roadside camera + plate verification alerts): `demo/malaysia_road_anpr_demo_30s.mp4` (1920×1080, 30 s)
@@ -357,7 +440,11 @@ trucks on the line, motorcycles filtering along the lane lines), so no accuracy 
 ### Quick start
 
 ```bash
-pip install -r requirements.txt
+# install into the project's own virtual environment (torch breaks when another project upgrades the global
+# Python to numpy 2.x); every command below then runs with the venv's python
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\activate
 
 # images (file / folder / glob) -> outputs/images_alpr/
 python run_image.py --source path/to/images
@@ -383,6 +470,17 @@ python run_image.py --source path/to/images --check
 # evaluation
 python -m alpr.eval_images --dataset "../Malaysian Car Plate Dataset" --split val --gt alpr/gt/malaysia_val_plates.csv
 python -m alpr.evaluate --pred outputs/malaysia_road_anpr_30s.plates.json --gt alpr/gt/malaysia_road_anpr_100-130s.txt
+
+# peak-congestion forecasting (section 10): download, measure, calibrate, 1-minute series, evaluation, demo video
+python -m alpr.download_hls uAVdyvglPco 270 data/videos/causeway/jb_ciq_cam02_2023-03-22
+python -m alpr.congestion --profile jb_ciq_cam02_2023-03-22 --measure
+python -m alpr.congestion --profile jb_ciq_cam02_2023-03-22 --calibrate --series data/series/jb_ciq_cam02_2023-03-22.csv
+python -m alpr.forecast --days data/series/jb_ciq_ipc_2023-03-21.csv data/series/jb_ciq_cam02_2023-03-22.csv --entity "To CIQ" --measures fill --extra none --pool TC1,TC2,TC3,TC4 --congestion 0.5 --congestion-measure fill
+python -m alpr.forecast_demo --profile jb_ciq_cam02_2023-03-22 --train data/series/jb_ciq_ipc_2023-03-21.csv --test data/series/jb_ciq_cam02_2023-03-22.csv --pool TC1,TC2,TC3,TC4 --from 05:30 --to 09:50 --out demo/jb_ciq_forecast_timelapse.mp4
+
+# speed-up (section 11): OpenVINO + headless mode, benchmark
+python run_alpr.py --profile malaysia_road_anpr --backend openvino --headless
+python -m alpr.benchmark --profile malaysia_road_anpr --frames 300
 
 # unit tests (no models or GPU needed)
 python alpr/tests/test_alpr.py
@@ -456,6 +554,33 @@ error on every speed, plus the trajectory-fit error. Without a calibration no km
 labelled "Simulated", fictitious X-series plates, trajectories in road metres), which are not counted in the flow.
 Details: [TEAM_GUIDE_EN.md](TEAM_GUIDE_EN.md), section 5.
 
+### Peak-congestion forecasting
+
+```mermaid
+flowchart LR
+    A[keyframes of the recording<br/>about every 5 s] --> B[texture occupancy<br/>per zone]
+    B --> C[calibrated to hand counts<br/>vehicles / fill]
+    C --> D[1-minute series]
+    D --> E[7 forecasting models<br/>+5 / +15 / +30 min]
+    E --> F[forecast panel / JSON / time-lapse]
+```
+
+- **Why not detect vehicle by vehicle**: on the approach road to the CIQ the cars are 15–40 px wide, half hidden by
+  the parapets and bumper to bumper in the queue; even on 3× enlarged tiles the COCO detector finds under a tenth of
+  them (1 of 38, 5 of 53).
+  Instead, like a traffic engineer's video detector, the system measures presence: the share of edge pixels in each
+  zone, calibrated zone by zone to vehicles with hand counts.
+- **Validation**: 16 hand-counted frames on A and 10 on C (night, dawn and daylight); about 2 vehicles of error at
+  night, worst at dawn (low light, glare on the railings).
+- **Forecasting**: strictly past-only (checked by a unit test), trained on one day and tested on the other; LightGBM
+  and the GRU are trained on the training day's 4 zone series together. Within 5 minutes persistence / ARIMA are the
+  hardest to beat; at 15–30 minutes the machine-learning models do better; the daily profile and LightGBM warn about
+  half an hour ahead.
+- **B (Causeway approach, rotating views)**: `view_gate` analyses only the "Causeway Link" view; the headlights at
+  night cannot be counted by hand, so B has no calibration and is not used for the forecasting evaluation.
+- **Limitations**: only 2 days, 2 cameras, 1 road; flow and speed cannot be measured on these cameras (vehicles too
+  small, no metric calibration).
+
 ### Code layout
 
 | Path | Purpose |
@@ -473,7 +598,13 @@ Details: [TEAM_GUIDE_EN.md](TEAM_GUIDE_EN.md), section 5.
 | `alpr/lane_tool.py` / `alpr/lane_eval.py` | click tool for lanes / per-lane counting evaluation (incl. slit-scan images for hand counting) |
 | `alpr/registry.py` | simulated vehicle registry (SQLite), verification rules, demo-registry generator |
 | `alpr/simulate.py` / `alpr/simulation.yaml` | builds the violation demo video: replaces chosen vehicles' plates with fictitious ones |
-| `alpr/hud.py` | dashboard and AR overlay rendering |
+| `alpr/hud.py` | dashboard and AR overlay rendering (incl. the congestion forecast panel) |
+| `alpr/congestion.py` | congestion measurement: keyframes → texture occupancy per zone → calibration → vehicles / fill / queued zones → 1-minute series |
+| `alpr/forecast.py` | seven forecasting models, past-only features, evaluation (MAE / RMSE, congestion precision / recall / warning time) |
+| `alpr/forecast_demo.py` / `alpr/forecast_figures.py` | time-lapse demo video / figures for the docs |
+| `alpr/series.py` | lane camera results JSON → 1-minute per-lane series |
+| `alpr/download_hls.py` | parallel download of recorded YouTube live streams |
+| `alpr/benchmark.py` | speed benchmark (time per stage) |
 | `alpr/gt/` | hand-verified plate labels (images + video) |
 | `models/plate_malaysia.pt` | plate detector fine-tuned on Malaysian plates (default) |
 | `models/finetuned.pt` | previous plate detector (Indian-plate data) |
@@ -495,15 +626,22 @@ Details: [TEAM_GUIDE_EN.md](TEAM_GUIDE_EN.md), section 5.
   (https://www.youtube.com/watch?v=KGHhxfkqypg), 15:00–17:00; same terms, not in the repository. There is no format
   137, so a 1080p60 section (format 299) is downloaded, which needs ffmpeg (imageio-ffmpeg ships one):
   `python -m yt_dlp -f 299 --download-sections "*900-1020" --ffmpeg-location <path to ffmpeg> -o data/videos/malaysia_selayang_overhead.mp4 https://www.youtube.com/watch?v=KGHhxfkqypg`
+- Congestion forecasting footage: recordings of the Causeway Link traffic live streams (Live Traffics 2/2:
+  https://www.youtube.com/watch?v=uAVdyvglPco , https://www.youtube.com/watch?v=uMBo-qx9M2U ; Live Traffics 1/2:
+  https://www.youtube.com/watch?v=MjUd_NZOa4U ); same terms, not in the repository; downloaded with
+  `python -m alpr.download_hls <video id> 270 <folder>` (1080p, about 9–14 GB each).
 
 ### Limitations and next steps
 
-- CPU only: ~3–5 FPS including rendering; real time needs a GPU or an OpenVINO / ONNX export. Plates narrower than ~60 px are still often misread.
+- CPU only: originally ~3–5 FPS including rendering; OpenVINO + headless mode is much faster with identical results
+  (numbers in [TEAM_GUIDE_EN.md](TEAM_GUIDE_EN.md), section 11), but a 30 FPS video is still not fully real time; the
+  next step is the RTX 5070 laptop GPU (a CUDA build of torch). Plates narrower than ~60 px are still often misread.
+- Congestion forecasting: only 2 days, 2 cameras and 3 congestion onsets, so the differences between models are not
+  statistically significant; the measurement is least accurate at dawn; several weeks of data are needed.
 - Plate verification uses a simulated registry: run on other windows of the footage, real plates that are not in
   `alpr/gt` show as `UNMATCHED`, which only means "not in the simulated registry".
 - Lanes: configured by hand per camera; small far-away motorcycles are still missed (see the table above); the
   congested carriageway has no hand count, so no accuracy; speed depends on the calibration and always carries an
   error bar; violations in real footage are not shown publicly.
-- **Next**: flow / congestion prediction (from `flow.per_10s` and the per-lane `lanes.per_10s`), real / authorised
-  registry data and multi-camera sightings, AR/VR display, generative AI (e.g. re-checking low-confidence plates,
-  automatic traffic reports).
+- **Next**: more days of congestion data, real / authorised registry data and multi-camera sightings, AR/VR display,
+  generative AI (e.g. re-checking low-confidence plates, automatic traffic reports).

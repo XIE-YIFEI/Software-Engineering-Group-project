@@ -20,10 +20,22 @@ class AlprConfig:
     frame_crop: List[float] = field(default_factory=list)   # [x1, y1, x2, y2] fractions; crop every frame
                                                            # first (removes recorder UI / overlays)
     frame_step: int = 1                # process every Nth frame (2 on 60 FPS footage = 30 FPS)
+    congestion: dict = field(default_factory=dict)  # far / high cameras: zone occupancy from keyframes, see
+                                       # alpr/congestion.py (edge_thresh, static_share, close_px, jam_occupancy)
+    view_gate: dict = field(default_factory=dict)   # camera that shows several views in turn: analyse a frame only
+                                       # when {template: image, box: [x1, y1, x2, y2] fractions} matches there
+                                       # (e.g. the view's on-screen label; min_score 0.6); tracking restarts
+                                       # each time the view comes back
+
+    headless: bool = False             # no rendering, no video: only the results JSON (plates, flow, lane series)
+    read_plates: bool = True           # False = vehicles, flow and lanes only (no plate detection / OCR)
 
     vehicle_model: str = "yolov8s.pt"
     plate_model: str = "models/plate_malaysia.pt"
     plate_model_fallback: str = ""     # optional 2nd plate detector, run only when the first finds nothing
+    model_backend: str = "pt"          # pt | openvino: <name>_openvino_model/ next to each .pt (exported on first use;
+                                       # the .pt is used when the export is missing and cannot be made)
+    openvino_device: str = "CPU"       # CPU (FP32, same results as the .pt) | GPU (Intel iGPU, FP16) | NPU | AUTO
     imgsz: int = 640
     vehicle_classes: List[int] = field(default_factory=lambda: [2, 3, 5, 7])
     vehicle_conf: float = 0.35         # a track is shown once its best detection reaches this
@@ -48,6 +60,8 @@ class AlprConfig:
 
     ocr_backend: str = "fast_plate_ocr"          # fast_plate_ocr | easyocr
     ocr_model: str = "cct-s-v2-global-model"     # fast-plate-ocr hub model
+    ocr_threads: int = 2               # ONNX Runtime threads for the OCR; 0 = its default (all cores, spinning:
+                                       # made the YOLO models 2-3x slower, TEAM_GUIDE.md section 11)
     ocr_tta: bool = False                        # images: average OCR over several crop paddings
     ocr_max_readings: int = 15
     ocr_ref_plate_w: int = 100         # plate width (px) at which a reading gets full voting weight

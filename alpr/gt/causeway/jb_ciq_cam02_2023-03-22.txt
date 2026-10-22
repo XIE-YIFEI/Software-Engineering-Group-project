@@ -1,0 +1,72 @@
+# Hand counts, camera A (jb_ciq_cam02_2023-03-22, youtube.com/watch?v=uAVdyvglPco), zones of the "To CIQ"
+# carriageway. Each line: keyframe time (camera clock)  zone  vehicles whose wheels are inside the zone.
+# Counted by eye on the enlarged zone crops (python -m alpr.congestion --gt-sheets / per-zone crops), the
+# pipeline's numbers were not looked at while counting. The parapet of the elevated road hides the lower half
+# of the far cars (TC1, TC2): uncertainty about +-2 vehicles per zone in daylight glare, +-1 at night
+# (headlight glare can hide one car behind another).
+01:39:58 TC1 3
+01:39:58 TC2 1
+01:39:58 TC3 1
+01:39:58 TC4 0
+03:20:02 TC1 2
+03:20:02 TC2 1
+03:20:02 TC3 0
+03:20:02 TC4 0
+05:09:59 TC1 1
+05:09:59 TC2 0
+05:09:59 TC3 1
+05:09:59 TC4 1
+07:15:02 TC1 17
+07:15:02 TC2 9
+07:15:02 TC3 4
+07:15:02 TC4 5
+07:59:58 TC1 6
+07:59:58 TC2 2
+07:59:58 TC3 1
+07:59:58 TC4 1
+08:44:58 TC1 11
+08:44:58 TC2 7
+08:44:58 TC3 5
+08:44:58 TC4 6
+09:29:59 TC1 16
+09:29:59 TC2 11
+09:29:59 TC3 7
+09:29:59 TC4 9
+09:50:00 TC1 10
+09:50:00 TC2 7
+09:50:00 TC3 4
+09:50:00 TC4 6
+# Added 2026-10-21: frames at the lighting transitions (street lights -> dawn -> low sun -> glare), where the
+# texture measure is least reliable. 08:15 is a gap in the queue (it cleared for ~10 minutes).
+06:44:59 TC1 5
+06:44:59 TC2 0
+06:44:59 TC3 0
+06:44:59 TC4 1
+07:00:00 TC1 2
+07:00:00 TC2 0
+07:00:00 TC3 0
+07:00:00 TC4 1
+07:29:59 TC1 16
+07:29:59 TC2 9
+07:29:59 TC3 5
+07:29:59 TC4 5
+07:45:01 TC1 15
+07:45:01 TC2 8
+07:45:01 TC3 4
+07:45:01 TC4 5
+08:15:00 TC1 4
+08:15:00 TC2 0
+08:15:00 TC3 0
+08:15:00 TC4 0
+08:30:01 TC1 16
+08:30:01 TC2 9
+08:30:01 TC3 5
+08:30:01 TC4 6
+09:00:00 TC1 16
+09:00:00 TC2 10
+09:00:00 TC3 5
+09:00:00 TC4 4
+09:15:02 TC1 16
+09:15:02 TC2 9
+09:15:02 TC3 6
+09:15:02 TC4 8

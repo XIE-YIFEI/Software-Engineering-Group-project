@@ -918,6 +918,159 @@ def test_lane_events_link_to_the_plate_once_it_is_read():
     assert p.lane_events()[0].plate == "WA 1234 B"
 
 
+# ---------------------------------------------------------------- forecasting (alpr/forecast.py, alpr/series.py)
+def _day(n=240, seed=0, start_min=300, peak=150):
+    """Synthetic camera-day: occupancy and flow rising to a morning peak around minute `peak`."""
+    rng = np.random.default_rng(seed)
+    t = np.arange(n)
+    occ = np.clip(0.05 + 0.45 / (1 + np.exp(-(t - peak) / 12.0)) + rng.normal(0, 0.02, n), 0, 1)
+    flow = np.clip(5 + 25 * np.exp(-((t - peak + 20) / 40.0) ** 2) + rng.normal(0, 1.5, n), 0, None)
+    return t + start_min, occ, flow
+
+
+def test_forecast_features_use_only_the_past():
+    from alpr.forecast import past_features
+    mod, occ, flow = _day()
+    X, names = past_features(occ, mod, {"flow": flow})
+    for t in (40, 120, 200):
+        occ2, flow2 = occ.copy(), flow.copy()
+        occ2[t + 1:] = 9.0                                              # rewrite the future
+        flow2[t + 1:] = -5.0
+        X2, _ = past_features(occ2, mod, {"flow": flow2})
+        assert np.array_equal(X[:t + 1], X2[:t + 1], equal_nan=True), t
+        assert not np.array_equal(X[t + 1:], X2[t + 1:], equal_nan=True)
+    assert "y_lag0" in names and "flow_mean15" in names and "tod_sin" in names
+
+
+def test_forecasts_made_at_t_do_not_change_when_the_future_changes():
+    from alpr.forecast import (ARIMAForecaster, DailyProfile, GRUForecaster, LightGBMForecaster, MovingAverage,
+                               Persistence, ProfileChange, Target)
+    mod_a, occ_a, flow_a = _day(seed=1)
+    mod_b, occ_b, flow_b = _day(seed=2, peak=140)
+    train = Target(occ_a, mod_a, {"flow": flow_a})
+    test = Target(occ_b, mod_b, {"flow": flow_b})
+    t = 150
+    occ_f, flow_f = occ_b.copy(), flow_b.copy()
+    occ_f[t + 1:] = 0.99
+    flow_f[t + 1:] = 0.0
+    test_f = Target(occ_f, mod_b, {"flow": flow_f})
+    models = [Persistence(), MovingAverage(15), DailyProfile(15), ProfileChange(15), ARIMAForecaster(orders=((2, 0, 0), (1, 0, 1))),
+              LightGBMForecaster(["flow"]), GRUForecaster(["flow"], seq=30, hidden=8, epochs=20)]
+    for m in models:
+        m.fit(train) if not isinstance(m, (LightGBMForecaster, GRUForecaster)) else m.fit(train, (5, 15))
+        a, b = m.forecast(test, (5, 15)), m.forecast(test_f, (5, 15))
+        for h in (5, 15):
+            assert np.allclose(a[h][:t + 1], b[h][:t + 1], equal_nan=True, atol=1e-9), (m.name, h)
+
+
+def test_forecast_metrics_and_congestion_warning_time():
+    from alpr.forecast import congestion_scores, congestion_state, mae_rmse, onsets
+    mae, rmse, n = mae_rmse(np.array([1.0, 2.0, np.nan, 4.0]), np.array([2.0, 2.0, 5.0, 1.0]))
+    assert n == 3 and abs(mae - 4 / 3) < 1e-9 and abs(rmse - np.sqrt(10 / 3)) < 1e-9
+    occ = np.r_[np.full(100, 0.1), np.full(60, 0.6), np.full(40, 0.1)]
+    st = congestion_state(occ, 0.3, k=5)
+    assert onsets(st) == [101] and st[:101].sum() == 0                  # 5-min mean reaches 0.3 at 101 (3 x 0.1 + 2 x 0.6)
+    assert onsets(np.r_[np.zeros(10), np.ones(5), np.zeros(10)].astype(int)) == []     # too short to count
+    h = 15
+    perfect = np.r_[occ[h:], np.full(h, np.nan)]                       # forecast[t] = occ[t + h]
+    s = congestion_scores(occ, perfect, h, 0.3)
+    assert s["onsets"][0]["warning_min"] >= h - 2 and s["recall"] > 0.9 and s["precision"] > 0.9
+    late = congestion_scores(occ, occ.copy(), h, 0.3)                  # persistence: warns only once it has happened
+    assert late["onsets"][0]["warning_min"] <= 2
+
+
+def test_series_builds_minutes_on_the_camera_clock():
+    from datetime import datetime
+    from alpr.series import minute_series
+    per = {"group": "To CIQ", "direction": "up"}
+    bins = lambda occ: [{"t_start": 10.0 * i, "t_end": 10.0 * (i + 1), "count": 0, "occupancy": occ,
+                         "mean_vehicles": 2.0} for i in range(12)]            # 120 s of video
+    rep = {"source": "x.mp4", "lanes": {"lanes": ["T1", "T2"], "per_lane": {"T1": per, "T2": per},
+                                        "crossings": [{"time_sec": 5.0, "lane": "T1"}, {"time_sec": 50.0, "lane": "T2"},
+                                                      {"time_sec": 70.0, "lane": "T1"}, {"time_sec": 75.0, "lane": ""}],
+                                        "per_10s": {"T1": bins(0.2), "T2": bins(0.4)}}}
+    s = minute_series([rep], datetime(2023, 3, 22, 7, 0, 0), osd_offset=-0.0, starts=[30.0])  # starts at 07:00:30
+    assert [m.strftime("%H:%M") for m in s["minutes"]] == ["07:00", "07:01", "07:02"]
+    assert s["rows"]["T1"]["observed_sec"] == [30.0, 60.0, 30.0]
+    assert s["rows"]["T1"]["flow"] == [2.0, 1.0, 0.0]                  # 1 car in 30 s = 2 veh/min; 07:01:40 -> 07:01
+    assert s["rows"]["To CIQ"]["flow"][1] == 2.0                       # T1 07:01:40 + T2 07:01:20
+    assert abs(s["rows"]["To CIQ"]["occupancy"][0] - 0.3) < 1e-9 and s["rows"]["To CIQ"]["density"][0] == 4.0
+
+
+def test_forecast_panel_renders_and_states_the_outlook():
+    from alpr.hud import FORECAST_RGB, forecast_status, render_dashboard
+    hist = [(m, 0.1 + 0.003 * (m + 60)) for m in range(-60, 1)]              # rising, 0.28 now
+    fc = {"title": "To CIQ", "measure": "occupancy", "model": "LightGBM", "threshold": 0.3, "history": hist,
+          "past_forecast": hist[15:], "lag": 15, "forecast": {5: 0.33, 15: 0.38, 30: 0.42}, "error": {5: 0.02, 15: 0.04, 30: 0.06}}
+    assert forecast_status(fc)[0] == "Congestion in ~5 min"
+    assert forecast_status(dict(fc, forecast={5: 0.2, 15: 0.25, 30: 0.28}))[0].startswith("Free flow")
+    assert forecast_status(dict(fc, history=[(0, 0.5)] * 5))[0] == "Congested now"
+    assert forecast_status(dict(fc, forecast={}))[0] == "Collecting history"
+    lm = _lane_map()
+    rows = [{"name": l.name, "group": l.group, "direction": l.direction, "polygon": l.polygon, "count": 2, "rate": None,
+             "occupancy": 0.2, "density": 2.0, "density_unit": "veh", "speed": None} for l in lm.lanes]
+    lanes = {"map": lm, "rows": rows, "events": [], "withheld": {}, "calibrated": False, "simulated": False, "fps": 30.0,
+             "t0": 0.0, "forecast": [fc]}
+    cfg = AlprConfig(hud_mode="dashboard", count_line_y=0.6, lane_rules=[], read_plates=False)
+    stats = {"fps": 0.0, "fps_video": 30.0, "time_sec": 0.0, "count": 0, "by_type": {}, "rate_per_min": 0.0, "plates": 0,
+             "confirmed": 0, "alerts": None, "legend": "congestion", "kpis": [("Camera time", "07:45:00", (255, 255, 255))]}
+    out = render_dashboard(np.full((1000, 1000, 3), 90, np.uint8), [], [], stats, cfg, lanes=lanes)
+    without = render_dashboard(np.full((1000, 1000, 3), 90, np.uint8), [], [], stats, cfg, lanes=dict(lanes, forecast=[]))
+    side = (slice(330, 1080), slice(1468, 1888))                         # sidebar below the lanes table
+    b, g, r = (out[side][..., k].astype(int) for k in range(3))
+    blue = (abs(r - FORECAST_RGB[0]) < 40) & (abs(g - FORECAST_RGB[1]) < 40) & (abs(b - FORECAST_RGB[2]) < 40)
+    assert blue.sum() > 200 and not np.array_equal(out[side], without[side])  # forecast lines drawn only with a forecast
+
+
+def test_zone_meter_texture_occupancy_and_calibration():
+    from alpr.congestion import ZoneMeter, fit_calibration, minute_series, vehicles
+    from alpr.lanes import LaneMap
+    lanes = [{"name": "T1", "group": "To", "polygon": [[.1, .4], [.5, .4], [.5, .6], [.1, .6]]},
+             {"name": "T2", "group": "To", "polygon": [[.5, .4], [.9, .4], [.9, .6], [.5, .6]]}]
+    lm = LaneMap.from_config(lanes, [], 400, 200)
+    meter = ZoneMeter(lm, 400, 200, {"night_sky": 10})
+    road = np.full((200, 400, 3), 110, np.uint8)
+    cv2.line(road, (40, 100), (360, 100), (230, 230, 230), 2)          # a lane marking: in every frame
+    light, occ = meter.measure(road)
+    assert light == "day" and 0.0 < occ["T1"] < 0.2 and abs(occ["T1"] - occ["T2"]) < 0.01   # the marking: a constant
+    car = road.copy()
+    for x in (60, 120):                                                  # two "vehicles" in T1 (roof, windows)
+        cv2.rectangle(car, (x, 84), (x + 40, 96), (30, 30, 200), -1)
+        cv2.rectangle(car, (x + 8, 87), (x + 18, 93), (220, 220, 220), -1)
+    _, occ2 = meter.measure(car)
+    assert occ2["T1"] > occ["T1"] + 0.05 and occ2["T2"] == occ["T2"]
+    assert meter.edge_mask(car).sum() > meter.edge_mask(road).sum()
+    # vehicles = 20 x occupancy + 1 by day, 2 vehicles fewer at night (other intercept); T2 = 15 x occ - 0.5
+    pairs = [("T1", "07:00", "day", 0.1, 3), ("T1", "08:00", "day", 0.2, 5), ("T1", "09:00", "day", 0.4, 9),
+             ("T1", "03:00", "night", 0.15, 2), ("T1", "04:00", "night", 0.25, 4),
+             ("T2", "07:00", "day", 0.1, 1), ("T2", "08:00", "day", 0.3, 4), ("T2", "09:00", "day", 0.5, 7),
+             ("T2", "03:00", "night", 0.2, 2.5), ("T2", "04:00", "night", 0.3, 4), ("T3", "07:00", "day", 0.1, 1)]
+    cal = fit_calibration(pairs, {"To": ["T1", "T2"]})
+    t1 = cal["zones"]["T1"]
+    assert abs(t1["slope"] - 20.0) < 1e-6 and abs(t1["intercept"] - 1.0) < 1e-6 and abs(t1["night_offset"] + 2.0) < 1e-6
+    assert t1["loo_mae"] < 1e-6 and "T3" not in cal["zones"]           # one count: no fit
+    assert abs(vehicles(cal, "T1", 0.3, "night") - 5.0) < 1e-6 and vehicles(cal, "T3", 0.3) is None
+    assert cal["groups"]["To"]["frames"] == 5 and cal["groups"]["To"]["loo_mae"] < 1e-6
+    res = {"zones": ["T1", "T2"], "groups": {"To": ["T1", "T2"]}, "params": {"jam_delta": 0.15},
+           "samples": [{"time": "2023-03-22T03:30:00", "lighting": "night", "zones": {"T1": 0.1, "T2": 0.05}},
+                       {"time": "2023-03-22T07:00:05", "lighting": "day", "zones": {"T1": 0.5, "T2": 0.1}},
+                       {"time": "2023-03-22T07:00:40", "lighting": "day", "zones": {"T1": 0.7, "T2": 0.5}},
+                       {"time": "2023-03-22T07:02:10", "lighting": "day", "zones": {"T1": 0.1, "T2": 0.6}}]}
+    s = minute_series(res)                                              # no calibration: excess + queue only
+    i = [m.strftime("%H:%M") for m in s["minutes"]].index("07:00")
+    assert s["baselines"] == {"T1": 0.1, "T2": 0.05}                        # 03:00-05:00 median = night baseline
+    assert s["rows"]["T1"]["excess"][i] == 0.5 and s["rows"]["To"]["queue"][i] == 2.0   # both zones >= 0.15 above
+    assert s["rows"]["To"]["queue"][i + 2] == 1.0                           # 07:02: only T2 (0.6 - 0.05)
+    assert s["rows"]["To"]["density"][i] != s["rows"]["To"]["density"][i]   # no calibration: no vehicles
+    cal2 = {"zones": {"T1": {"slope": 20.0, "intercept": 0.0}, "T2": {"slope": 20.0, "intercept": 0.0}},
+            "capacity": {"T1": 16, "T2": 20}}
+    s = minute_series(res, cal2)
+    assert s["rows"]["T1"]["occupancy"][i] == 0.6 and s["rows"]["To"]["density"][i] == 18.0   # 20 x (0.6 + 0.3)
+    assert s["rows"]["T1"]["fill"][i] == 0.75 and s["rows"]["To"]["fill"][i] == 0.5      # 18 / (16 + 20)
+    assert s["rows"]["To"]["queue"][i] == 1.0                               # T1 at 0.75 >= 0.5, T2 at 0.3
+    assert s["rows"]["To"]["occupancy"][i + 1] != s["rows"]["To"]["occupancy"][i + 1]   # 07:01 not observed: NaN
+
+
 if __name__ == "__main__":
     tests = {k: v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)}
     failed = 0

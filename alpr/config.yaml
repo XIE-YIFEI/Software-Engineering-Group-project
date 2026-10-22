@@ -276,6 +276,81 @@ profiles:
     min_lead_w_frac: 0.0
     hud_title: "SECS Vision · Kota Bharu Intersection CCTV"
 
+  # ---- Congestion forecasting, Johor Bahru CIQ (Bangunan Sultan Iskandar) approach roads -----------------
+  # Recorded YouTube live streams of the Causeway Link traffic cameras (TEAM_GUIDE.md section 10). The
+  # cameras sit on high-rise buildings: cars are 15-40 px wide and queue bumper to bumper, so congestion is
+  # measured per zone from keyframes (python -m alpr.congestion), not by tracking single vehicles. Zones
+  # were derived from where traffic moves in each direction (optical flow, 08:00-09:30) and checked with
+  # python -m alpr.lane_tool --show; in each group the first zone is the head of the queue (at the CIQ).
+  # The videos live in data/videos/causeway/<profile>/ as hourly pieces + a .json with each piece's start.
+  #
+  # A: "Camera 02 CIQ Traffics @JB", youtube.com/watch?v=uAVdyvglPco (Live Traffics 2/2), Wed 2023-03-22,
+  # 00:25-09:55, 1080p. On-screen clock = stream start 00:25:12 + t - 13 s (checked on 19 frames).
+  jb_ciq_cam02_2023-03-22:
+    source: data/videos/causeway/jb_ciq_cam02_2023-03-22/*_p*.mp4
+    video_start_time: "2023-03-22T00:24:59"
+    read_plates: false
+    lane_rules: []
+    hud_mode: dashboard
+    hud_title: "SECS Vision · Congestion forecast · JB CIQ approach (Camera 02)"
+    congestion: {jam_occupancy: 0.45}
+    lanes:
+      - {name: TC1, group: To CIQ, direction: up, polygon: [[0.5078, 0.5306], [0.5068, 0.5491], [0.3786, 0.6241], [0.3526, 0.6315], [0.349, 0.6157], [0.3521, 0.6083], [0.4766, 0.5324], [0.4953, 0.5278]]}
+      - {name: TC2, group: To CIQ, direction: up, polygon: [[0.349, 0.6167], [0.3526, 0.6361], [0.3401, 0.6602], [0.2635, 0.7148], [0.2552, 0.6778], [0.3266, 0.6259]]}
+      - {name: TC3, group: To CIQ, direction: up, polygon: [[0.2552, 0.6796], [0.263, 0.7148], [0.2453, 0.7315], [0.1974, 0.7639], [0.1896, 0.7306], [0.2026, 0.6917], [0.2182, 0.6852]]}
+      - {name: TC4, group: To CIQ, direction: up, polygon: [[0.1969, 0.763], [0.1906, 0.7806], [0.1667, 0.8046], [0.1313, 0.8111], [0.1234, 0.8056], [0.1187, 0.7935], [0.1193, 0.7852], [0.1422, 0.7611], [0.1833, 0.7324], [0.1896, 0.7315]]}
+      - {name: FC1, group: From CIQ, direction: down, polygon: [[0.2542, 0.8417], [0.2234, 0.8713], [0.1677, 0.8657], [0.1521, 0.8491], [0.1422, 0.8037], [0.2125, 0.7463], [0.2286, 0.7389]]}
+      - {name: FC2, group: From CIQ, direction: down, polygon: [[0.301, 0.6824], [0.3151, 0.7407], [0.2818, 0.8093], [0.2547, 0.8417], [0.2297, 0.7361]]}
+      - {name: FC3, group: From CIQ, direction: down, polygon: [[0.4271, 0.5972], [0.4406, 0.6528], [0.3156, 0.7407], [0.3021, 0.6861], [0.3021, 0.6778], [0.3714, 0.6259], [0.4125, 0.6]]}
+      - {name: FC4, group: From CIQ, direction: down, polygon: [[0.651, 0.4657], [0.651, 0.4722], [0.5885, 0.5333], [0.4464, 0.6528], [0.4411, 0.6528], [0.4276, 0.5981], [0.6349, 0.4602]]}
+
+  # C: the "IPC" camera of the same channel the day before, Tue 2023-03-21, youtube.com/watch?v=uMBo-qx9M2U
+  # (02:09-14:04; the first 7.9 h are used), same approach road seen from another building, 1080p.
+  # On-screen clock = stream start 02:09:55 + t + 145 s from stream second 2400 on; before that the
+  # recording has gaps (the offset steps from -16 s to +145 s between 02:20 and 02:52), so it is skipped.
+  jb_ciq_ipc_2023-03-21:
+    source: data/videos/causeway/jb_ciq_ipc_2023-03-21/*_p*.mp4
+    video_start_time: "2023-03-21T02:12:20"
+    start_sec: 2400.0
+    read_plates: false
+    lane_rules: []
+    hud_mode: dashboard
+    hud_title: "SECS Vision · Congestion forecast · JB CIQ approach (IPC camera)"
+    congestion: {jam_occupancy: 0.45}
+    lanes:
+      - {name: TC1, group: To CIQ, direction: up, polygon: [[0.5167, 0.387], [0.499, 0.3963], [0.4094, 0.4213], [0.4057, 0.4009], [0.4188, 0.3944], [0.5078, 0.3731], [0.5146, 0.3741]]}
+      - {name: TC2, group: To CIQ, direction: up, polygon: [[0.4057, 0.4019], [0.4078, 0.4213], [0.3312, 0.4639], [0.3271, 0.4269], [0.3802, 0.4065]]}
+      - {name: TC3, group: To CIQ, direction: up, polygon: [[0.3266, 0.4269], [0.3297, 0.4648], [0.2479, 0.4954], [0.2437, 0.4574]]}
+      - {name: TC4, group: To CIQ, direction: up, polygon: [[0.2432, 0.4565], [0.2474, 0.4954], [0.1896, 0.5148], [0.1688, 0.5037], [0.1688, 0.4981], [0.1969, 0.4759], [0.2365, 0.4556]]}
+      - {name: FC1, group: From CIQ, direction: down, polygon: [[0.1109, 0.5556], [0.1219, 0.6315], [0.0469, 0.6769], [0.0307, 0.6833], [0.0, 0.6861], [0.0, 0.6185], [0.0161, 0.6037]]}
+      - {name: FC2, group: From CIQ, direction: down, polygon: [[0.2344, 0.4926], [0.2432, 0.5528], [0.1219, 0.6306], [0.112, 0.5519], [0.213, 0.4935]]}
+      - {name: FC3, group: From CIQ, direction: down, polygon: [[0.35, 0.4444], [0.3578, 0.5009], [0.3125, 0.5556], [0.2615, 0.5889], [0.2536, 0.5898], [0.2432, 0.5519], [0.2349, 0.4926], [0.2724, 0.4648]]}
+      - {name: FC4, group: From CIQ, direction: down, polygon: [[0.5776, 0.4074], [0.574, 0.413], [0.4885, 0.4602], [0.3594, 0.5009], [0.35, 0.4435], [0.3984, 0.4222], [0.5703, 0.3935], [0.5755, 0.3944]]}
+
+  # B: "Live Traffics 1/2", youtube.com/watch?v=MjUd_NZOa4U, Fri 2024-01-12 00:25-11:12, 1080p: another site,
+  # the Causeway approach (top left: the Causeway to Woodlands, Singapore). The stream shows four cameras in
+  # turn, 10 s each; only the "Causeway Link" view is used (view_gate: its on-screen label). On-screen
+  # clock = stream start 00:25:08 + t + 15 s (-10 s before a 25-s recording gap between 03:27 and 04:15).
+  jb_causeway_cam1_2024-01-12:
+    source: data/videos/causeway/jb_causeway_cam1_2024-01-12/*_p*.mp4
+    video_start_time: "2024-01-12T00:25:23"
+    read_plates: false
+    lane_rules: []
+    hud_mode: dashboard
+    hud_title: "SECS Vision · Congestion forecast · Causeway approach, Johor Bahru"
+    view_gate: {template: alpr/views/jb_causeway_cam1_label.png, box: [0.0969, 0.8019, 0.3177, 0.8537],
+                binary_level: 200, min_score: 0.5}
+    congestion: {jam_occupancy: 0.45, sky_box: [0.0, 0.25, 0.12, 0.45]}   # no sky in view: the water, left
+    lanes:
+      - {name: TS1, group: To SG, direction: up, polygon: [[0.099, 0.1343], [0.1078, 0.1306], [0.3083, 0.2741], [0.3573, 0.3324], [0.4073, 0.4176], [0.362, 0.4991], [0.1401, 0.2185], [0.1219, 0.188], [0.099, 0.1398]]}
+      - {name: TS2, group: To SG, direction: up, polygon: [[0.4073, 0.4185], [0.4375, 0.462], [0.501, 0.5843], [0.5104, 0.6093], [0.4568, 0.7065], [0.4458, 0.6944], [0.413, 0.6278], [0.376, 0.5426], [0.3625, 0.5]]}
+      - {name: TS3, group: To SG, direction: up, polygon: [[0.5109, 0.6102], [0.5432, 0.6657], [0.5943, 0.7806], [0.5312, 0.8935], [0.4984, 0.862], [0.4573, 0.7083]]}
+      - {name: TS4, group: To SG, direction: up, polygon: [[0.5318, 0.8935], [0.5943, 0.7815], [0.6505, 0.8454], [0.6797, 0.9185], [0.699, 0.9991], [0.5896, 0.9991]]}
+      - {name: FS1, group: From SG, direction: down, polygon: [[0.6625, 0.8954], [0.7047, 0.8083], [0.7109, 0.8074], [0.8448, 0.9769], [0.8453, 0.9991], [0.6979, 0.9991], [0.6792, 0.9556]]}
+      - {name: FS2, group: From SG, direction: down, polygon: [[0.5833, 0.5991], [0.6953, 0.7843], [0.7042, 0.8083], [0.6625, 0.8944], [0.5818, 0.763], [0.5526, 0.7046], [0.5474, 0.6731]]}
+      - {name: FS3, group: From SG, direction: down, polygon: [[0.4453, 0.3361], [0.5828, 0.5991], [0.5469, 0.6731], [0.5339, 0.6583], [0.412, 0.4324], [0.4099, 0.4093]]}
+      - {name: FS4, group: From SG, direction: down, polygon: [[0.101, 0.1074], [0.1182, 0.1065], [0.3906, 0.263], [0.4359, 0.312], [0.4453, 0.3352], [0.4089, 0.4111], [0.1698, 0.1991], [0.1026, 0.1194]]}
+
   cctv:
     source: data/videos/anpr_sample_clear.mp4
     start_sec: 8.0

@@ -150,7 +150,8 @@ class LaneMetrics:
                 row = {"t_start": round(start_sec + lo, 2), "t_end": round(start_sec + hi, 2), "count": len(cross),
                        "veh_per_min": round(len(cross) * 60.0 / span, 1),
                        "occupancy": round(sum(self._occ[l][i] for i in idx) / len(idx), 3) if idx else 0.0,
-                       "mean_vehicles": round(n_mean, 2)}
+                       "mean_vehicles": round(n_mean, 2),
+                       "observed_sec": round(len(idx) / self.fps, 2)}   # < bin length: frames skipped (view gate)
                 if self.zone_len_m.get(l):
                     row["density_veh_km"] = round(n_mean / (self.zone_len_m[l] / 1000.0), 1)
                 vs = [speeds[c.track_id] for c in cross if speeds and c.track_id in speeds]

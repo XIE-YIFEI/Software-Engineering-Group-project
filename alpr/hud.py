@@ -428,10 +428,12 @@ _GROUP_RGB = [BLUE, INDIGO, (100, 210, 255), (172, 142, 104)]
 QUEUE_OCC, DENSE_OCC = 0.45, 0.20          # time occupancy at the count line: queue / dense traffic
 
 
-def lane_state(occupancy: float) -> Tuple[str, tuple]:
-    if occupancy >= QUEUE_OCC:
+def lane_state(occupancy: float, thresholds: Optional[Sequence[float]] = None) -> Tuple[str, tuple]:
+    """thresholds: (queue, dense); default the count-line occupancy levels QUEUE_OCC / DENSE_OCC."""
+    queue, dense = thresholds or (QUEUE_OCC, DENSE_OCC)
+    if occupancy >= queue:
         return "Queue", RED
-    if occupancy >= DENSE_OCC:
+    if occupancy >= dense:
         return "Dense", YELLOW
     return "Free flow", GREEN
 
@@ -446,7 +448,7 @@ def _draw_lanes(view: np.ndarray, T: _Text, lanes: Dict, cfg, fh: int, s: float,
     on the count line with its count."""
     vh, vw = view.shape[:2]
     for r in lanes["rows"]:
-        _, rgb = lane_state(r["occupancy"])
+        _, rgb = lane_state(r["occupancy"], lanes.get("state_thresholds"))
         pts = np.int32(np.asarray(r["polygon"]) * s)
         x1, y1 = pts.min(axis=0)
         x2, y2 = pts.max(axis=0)
@@ -506,13 +508,14 @@ def _lanes_panel(canvas, T: _Text, lanes: Dict, x1: int, y: int, x2: int) -> int
         tot = sum(r["count"] for r in rows)
         dot(canvas, (x1 + 6, y + 9), 4, _group_rgb(lanes, g))
         T.add((x1 + 16, y + 9), f"{g or 'Lanes'} {arrow}", LABEL, f_h, "lm")
-        T.add((x2, y + 9), f"{tot} veh · {sum(r['rate'] for r in rows):.0f}/min", LABEL2, f_meta, "rm")
+        flow = [r["rate"] for r in rows if r.get("rate") is not None]
+        T.add((x2, y + 9), f"{tot} veh" + (f" · {sum(flow):.0f}/min" if flow else ""), LABEL2, f_meta, "rm")
         y += 24
         for r in rows:
-            state, rgb = lane_state(r["occupancy"])
+            state, rgb = lane_state(r["occupancy"], lanes.get("state_thresholds"))
             T.add((x1 + 4, y + 11), r["name"], LABEL, f_name, "lm")
             T.add((x1 + 92, y + 11), str(r["count"]), LABEL, f_num, "rm")
-            T.add((x1 + 100, y + 11), f"{r['rate']:.0f}/min", LABEL2, f_meta, "lm")
+            T.add((x1 + 100, y + 11), f"{r['rate']:.0f}/min" if r.get("rate") is not None else "veh", LABEL2, f_meta, "lm")
             _bar(canvas, x1 + 160, y + 8, x1 + 248, r["occupancy"], rgb)
             meta = f"{r['occupancy'] * 100:.0f}%"
             if r.get("speed") is not None:
@@ -544,16 +547,186 @@ def _event_row(canvas, T: _Text, ev, x1: int, y: int, x2: int, fps: float, t0: f
     return 30 if compact else 62
 
 
+# ---------------------------------------------------------------------------- forecast panel
+FORECAST_RGB = (100, 210, 255)                 # forecast lines and dots (the light blue of the count line)
+
+
+def _polyline(img, pts: Sequence[Tuple[float, float]], rgb, t: int = 2, alpha: float = 1.0, dash: int = 0) -> None:
+    """Anti-aliased polyline blended onto img; dash > 0 draws `dash` px on, `dash` px off."""
+    pts = [(float(x), float(y)) for x, y in pts]
+    if len(pts) < 2:
+        return
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    x1, y1 = int(min(xs)) - t - 2, int(min(ys)) - t - 2
+    x2, y2 = int(max(xs)) + t + 3, int(max(ys)) + t + 3
+    m = np.zeros((max(1, y2 - y1), max(1, x2 - x1)), np.uint8)
+    if dash:
+        for (ax, ay), (bx, by) in zip(pts[:-1], pts[1:]):
+            L = max(1e-6, float(np.hypot(bx - ax, by - ay)))
+            for s in np.arange(0.0, L, 2 * dash):
+                e = min(L, s + dash)
+                p = (int(round(ax + (bx - ax) * s / L - x1)), int(round(ay + (by - ay) * s / L - y1)))
+                q = (int(round(ax + (bx - ax) * e / L - x1)), int(round(ay + (by - ay) * e / L - y1)))
+                cv2.line(m, p, q, 255, t, cv2.LINE_AA)
+    else:
+        cv2.polylines(m, [np.int32([[x - x1, y - y1] for x, y in pts])], False, 255, t, cv2.LINE_AA)
+    _blend(img, x1, y1, m.astype(np.float32) / 255.0, _bgr(rgb), alpha)
+
+
+def _area(img, pts: Sequence[Tuple[float, float]], rgb, alpha: float) -> None:
+    """Filled polygon (anti-aliased edge) blended onto img."""
+    if len(pts) < 3:
+        return
+    P = np.asarray(pts, np.float64)
+    x1, y1 = np.floor(P.min(0)).astype(int) - 1
+    x2, y2 = np.ceil(P.max(0)).astype(int) + 2
+    m = np.zeros((max(1, y2 - y1), max(1, x2 - x1)), np.uint8)
+    cv2.fillPoly(m, [np.int32(np.round(P - [x1, y1]))], 255, cv2.LINE_AA)
+    _blend(img, int(x1), int(y1), m.astype(np.float32) / 255.0, _bgr(rgb), alpha)
+
+
+def _fmt_value(v: Optional[float], measure: str) -> str:
+    """occupancy / fill as a percentage, vehicles as a count, flow per minute."""
+    if v is None or v != v:
+        return "–"
+    if measure in ("occupancy", "fill"):
+        return f"{v * 100:.0f}%"
+    return f"{v:.0f}" if measure == "vehicles" else f"{v:.0f}/min"
+
+
+def forecast_status(fc: Dict) -> Tuple[str, tuple]:
+    """('Congested now' | 'Congestion in ~15 min' | 'Free flow · next 30 min' | 'Collecting history', colour)."""
+    thr = fc.get("threshold")
+    hist = [v for _, v in fc.get("history", []) if v is not None and v == v]
+    fcs = {int(h): v for h, v in (fc.get("forecast") or {}).items() if v is not None and v == v}
+    if not fcs:
+        return "Collecting history", GRAY
+    if thr is None:
+        return f"Forecast · next {max(fcs)} min", BLUE
+    if hist and float(np.mean(hist[-5:])) >= thr:
+        return "Congested now", RED
+    ahead = [h for h in sorted(fcs) if fcs[h] >= thr]
+    if ahead:
+        return f"Congestion in ~{ahead[0]} min", ORANGE
+    return f"Free flow · next {max(fcs)} min", GREEN
+
+
+def render_forecast_panel(canvas, T: _Text, fc: Dict, x1: int, y: int, x2: int) -> int:
+    """Forecast card for one direction: the last hour of the measure (solid), what the model forecast
+    for that hour `lag` minutes earlier (dashed), the current forecasts +5 / +15 / +30 min with an error
+    band, the congestion threshold, a status pill and one tile per horizon. Returns the bottom y.
+
+    fc: {title, measure ("occupancy" | "flow"), model, threshold (or None), history [(min, v)], past_forecast
+    [(min, v)], lag, forecast {h: v}, error {h: MAE}, flow_forecast {h: veh/min} (optional), note}; minutes
+    are relative to now (history <= 0 < forecast); note: a line or a list of lines under the tiles."""
+    meas = fc.get("measure", "occupancy")
+    f_t, f_meta, f_ax = _font("display", 22), _font("regular", 13), _font("regular", 11)
+    T.add((x1, y + 12), "Forecast", LABEL, f_t, "lm")
+    T.add((x2, y + 14), _fit(f"{fc.get('title', '')} · {meas} · {fc.get('model', '')}", f_meta, x2 - x1 - 110),
+          LABEL2, f_meta, "rm")
+    y += 32
+    status, srgb = forecast_status(fc)
+    _pill(canvas, T, x1, y, status, _font("semibold", 14), fg=LABEL, bg=srgb, bg_alpha=0.88, h=28)
+    y += 40
+    # chart: -60 .. +30 min
+    cx1, cx2, cy1, cy2 = x1 + 34, x2 - 6, y, y + 132
+    fill(canvas, (x1, cy1 - 6, x2, cy2 + 6), 12, (255, 255, 255), 0.035)
+    hist = [(m, v) for m, v in fc.get("history", []) if v is not None and v == v]
+    past = [(m, v) for m, v in fc.get("past_forecast", []) if v is not None and v == v]
+    fcs = {int(h): v for h, v in (fc.get("forecast") or {}).items() if v is not None and v == v}
+    err = {int(h): e for h, e in (fc.get("error") or {}).items()}
+    thr = fc.get("threshold")
+    vals = [v for _, v in hist + past] + list(fcs.values()) + [v + err.get(h, 0) for h, v in fcs.items()]
+    frac = meas in ("occupancy", "fill")
+    top = max(max([0.0] + vals) * 1.1, (thr or 0) * 1.5, 0.2 if frac else 5.0)
+    step = 0.1 if frac else (5.0 if top <= 50 else 10.0)
+    top = np.ceil(top / step / 2) * step * 2
+    top = min(1.0, top) if meas == "occupancy" else top
+    tmin, tmax = -60.0, 30.0
+
+    def X(m):
+        return cx1 + (m - tmin) / (tmax - tmin) * (cx2 - cx1)
+
+    def Y(v):
+        return cy2 - max(0.0, min(1.0, v / top)) * (cy2 - cy1)
+
+    for v in (0.0, top / 2, top):                                   # light grid + y labels
+        fill(canvas, (cx1, int(Y(v)), cx2, int(Y(v)) + 1), 0, (255, 255, 255), 0.07)
+        T.add((cx1 - 6, Y(v)), _fmt_value(v, meas).replace("/min", ""), LABEL3, f_ax, "rm")
+    if thr is not None and thr < top:
+        _polyline(canvas, [(cx1, Y(thr)), (cx2, Y(thr))], RED, 1, 0.75, dash=5)
+        T.add((cx1 + 4, Y(thr) - 8), f"congestion {_fmt_value(thr, meas)}", RED, f_ax, "lm")
+    fill(canvas, (int(X(0)), cy1, int(X(0)) + 1, cy2), 0, (255, 255, 255), 0.30)   # now
+    if len(hist) >= 2:
+        pts = [(X(m), Y(v)) for m, v in hist]
+        _area(canvas, pts + [(pts[-1][0], cy2), (pts[0][0], cy2)], BLUE, 0.14)
+        _polyline(canvas, pts, BLUE, 2, 0.95)
+    if len(past) >= 2:
+        _polyline(canvas, [(X(m), Y(v)) for m, v in past], FORECAST_RGB, 2, 0.70, dash=4)
+    if fcs:
+        hs = sorted(fcs)
+        lo = [(X(h), Y(fcs[h] - err.get(h, 0.0))) for h in hs]
+        hi = [(X(h), Y(fcs[h] + err.get(h, 0.0))) for h in hs]
+        start = (X(0), Y(hist[-1][1])) if hist else (X(hs[0]), Y(fcs[hs[0]]))
+        if err:
+            _area(canvas, [start] + hi + lo[::-1], FORECAST_RGB, 0.16)
+        _polyline(canvas, [start] + [(X(h), Y(fcs[h])) for h in hs], FORECAST_RGB, 2, 0.95)
+        for h in hs:
+            dot(canvas, (X(h), Y(fcs[h])), 4, RED if thr is not None and fcs[h] >= thr else FORECAST_RGB)
+    for m, lab in ((-60, "-60"), (-30, "-30"), (0, "now"), (15, "+15"), (30, "+30 min")):
+        T.add((X(m), cy2 + 14), lab, LABEL3 if m else LABEL2, f_ax, "mm" if m not in (-60, 30) else
+              ("lm" if m == -60 else "rm"))
+    y = cy2 + 26
+    # legend
+    lx = x1
+    for txt, rgb, dashed in (("actual", BLUE, False), (f"forecast made {fc.get('lag', 15)} min before", FORECAST_RGB, True),
+                             ("forecast now", FORECAST_RGB, False)):
+        _polyline(canvas, [(lx, y + 7), (lx + 16, y + 7)], rgb, 2, 0.9, dash=3 if dashed else 0)
+        T.add((lx + 22, y + 7), txt, LABEL2, f_ax, "lm")
+        lx += 22 + int(f_ax.getlength(txt)) + 14
+    y += 22
+    # one tile per horizon
+    hs = sorted(fcs) or [5, 15, 30]
+    tw = (x2 - x1 - 8 * (len(hs) - 1)) / len(hs)
+    flows = {int(h): v for h, v in (fc.get("flow_forecast") or {}).items()}
+    for k, h in enumerate(hs):
+        tx = int(x1 + k * (tw + 8))
+        fill(canvas, (tx, y, int(tx + tw), y + 58), 12, (255, 255, 255), 0.06)
+        v = fcs.get(h)
+        rgb = RED if (thr is not None and v is not None and v >= thr) else LABEL
+        T.add((tx + 12, y + 14), f"+{h} min", LABEL2, _font("semibold", 12), "lm")
+        T.add((tx + 12, y + 34), _fmt_value(v, meas), rgb, _font("display", 20), "lm")
+        sub = (f"±{_fmt_value(err[h], meas)}" if h in err else "") + \
+              (f" · {flows[h]:.0f}/min" if h in flows and flows[h] == flows[h] else "")
+        T.add((tx + 12, y + 50), _fit(sub.strip(" ·"), _font("regular", 11), tw - 16), LABEL3, _font("regular", 11), "lm")
+    y += 66
+    notes = fc.get("note") or []
+    for line in ([notes] if isinstance(notes, str) else notes):
+        T.add((x1, y + 6), _fit(line, _font("regular", 12), x2 - x1), LABEL3, _font("regular", 12), "lm")
+        y += 18
+    return y
+
+
 def render_lane_sidebar(canvas, T: _Text, lanes: Dict, log: List, side, cfg, fps_video: float,
                         registry_on: bool) -> None:
-    """Sidebar for a lane camera: per-lane flow, lane events (newest first), then the plate log."""
+    """Sidebar for a lane camera: per-lane flow, the forecast (when there is one), lane events (newest
+    first), then the plate log."""
     sx1, sy1, sx2, sy2 = side
     glass(canvas, side, 28, tint=(30, 30, 33), alpha=0.6, border_alpha=0.12, blur=False)
-    T.add((sx1 + 24, sy1 + 22), "Lanes", LABEL, _font("display", 24))
-    T.add((sx2 - 24, sy1 + 38), "count · flow · occupancy", LABEL2, _font("regular", 13), "rm")
+    T.add((sx1 + 24, sy1 + 22), lanes.get("panel_title", "Lanes"), LABEL, _font("display", 24))
+    T.add((sx2 - 24, sy1 + 38), lanes.get("panel_caption", "count · flow · occupancy"), LABEL2, _font("regular", 13), "rm")
     y = _lanes_panel(canvas, T, lanes, sx1 + 24, sy1 + 64, sx2 - 24)
     fill(canvas, (sx1 + 24, y, sx2 - 24, y + 1), 0, (255, 255, 255), 0.10)
     y += 14
+    for fc in lanes.get("forecast") or []:
+        if y + 330 > sy2 - 16:
+            break
+        y = render_forecast_panel(canvas, T, fc, sx1 + 24, y, sx2 - 24) + 6
+        fill(canvas, (sx1 + 24, y, sx2 - 24, y + 1), 0, (255, 255, 255), 0.10)
+        y += 14
+    if y + 70 > sy2 - 16 or (not lanes["events"] and not getattr(cfg, "lane_rules", True)
+                             and not getattr(cfg, "read_plates", True)):
+        return                                                 # counting-only camera: no events, no plates
     events = lanes["events"]
     T.add((sx1 + 24, y + 12), "Events", LABEL, _font("display", 22), "lm")
     wh = sum(lanes.get("withheld", {}).values())
@@ -678,6 +851,18 @@ def _lane_legend(canvas, T: _Text, y: int, x_left: int, x_right: int, by_type: D
         x += wdt + 18
 
 
+def _congestion_legend(canvas, T: _Text, y: int, x_left: int, x_right: int, note: str = "") -> None:
+    """Legend of a congestion camera: zone states and the measured vehicle area."""
+    f = _font("regular", 14)
+    x = x_left + 4
+    for rgb, name in ((GREEN, "Free flow"), (YELLOW, "Dense"), (RED, "Queue"), (FORECAST_RGB, "Vehicle area measured")):
+        dot(canvas, (x + 5, y), 5, rgb)
+        T.add((x + 16, y), name, LABEL2, f, "lm")
+        x += 16 + int(f.getlength(name)) + 22
+    if note:
+        T.add((x_right, y), _fit(note, f, x_right - x - 10), LABEL3, f, "rm")
+
+
 def _log_card(canvas, T: _Text, e, x1: int, y: int, x2: int, cfg, fps_video: float, registry_on: bool,
               max_y: int) -> Optional[int]:
     """One plate-log card; returns its bottom y, or None when it does not fit above max_y."""
@@ -756,10 +941,12 @@ def render_dashboard(frame: np.ndarray, vehicles: List[Dict], log: List, stats: 
     _paste_rounded(canvas, view, vx1, vy1, 26)
     stroke(canvas, (vx1, vy1, vx2, vy2), 26, (255, 255, 255), 1, 0.10)
 
-    # header
+    # header (stats["kpis"]: the caller's own list, e.g. a congestion camera with no counting or plates)
     kpis = [("Time", _clock(stats["time_sec"]), LABEL), ("Counted", str(stats["count"]), LABEL),
             ("Flow", f"{stats['rate_per_min']:.0f}/min", LABEL), ("Plates", str(stats["plates"]), LABEL)]
-    if lanes is not None:
+    if stats.get("kpis"):
+        kpis = list(stats["kpis"])
+    elif lanes is not None:
         from .behaviour import LANE_CHANGE
         evs = lanes["events"]
         n_lc = sum(e.code == LANE_CHANGE for e in evs)
@@ -770,12 +957,16 @@ def render_dashboard(frame: np.ndarray, vehicles: List[Dict], log: List, stats: 
         kpis += [("Valid", str(stats.get("valid", 0)), GREEN), ("Flagged", str(n_flag), RED if n_flag else LABEL)]
     else:
         kpis.append(("Confirmed", str(stats["confirmed"]), GREEN))
-    kpis.append(("FPS", f"{stats['fps']:.1f}", LABEL2))
+    if not stats.get("kpis"):
+        kpis.append(("FPS", f"{stats['fps']:.1f}", LABEL2))
     _header(canvas, T, cfg, kpis, W)
 
     # legend row under the view
     if lanes is not None:
-        _lane_legend(canvas, T, H - _M - 22, vx1, vx2, stats.get("by_type", {}), bool(banner))
+        if stats.get("legend") == "congestion":
+            _congestion_legend(canvas, T, H - _M - 22, vx1, vx2, stats.get("legend_note", ""))
+        else:
+            _lane_legend(canvas, T, H - _M - 22, vx1, vx2, stats.get("by_type", {}), bool(banner))
         render_lane_sidebar(canvas, T, lanes, log, side, cfg, stats.get("fps_video", 30.0), registry_on)
         return T.draw(canvas)
     _legend(canvas, T, H - _M - 22, vx1, vx2, stats.get("by_type", {}), registry_on, bool(banner))

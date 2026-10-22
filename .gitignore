@@ -14,6 +14,8 @@ env/
 # ── Model weights (large; train via the notebooks or attach to a Release) ────
 *.pt
 *.onnx
+# OpenVINO exports of the .pt models, made on first use (model_backend: openvino)
+*_openvino_model/
 
 # ── Datasets (large; download from Roboflow — see README) ────────────────────
 # Anchored to repo root so phase2/data/clips/ (small demo assets) is NOT ignored.
