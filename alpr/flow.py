@@ -130,8 +130,10 @@ class LaneMetrics:
 
     def time_series(self, counter: LineCounter, bin_sec: float = 10.0, start_sec: float = 0.0,
                     speeds: Optional[Dict[int, float]] = None) -> Dict[str, List[dict]]:
-        """{lane: [{t_start, t_end, count, veh_per_min, occupancy, mean_vehicles, density_veh_km?,
-        mean_speed_kmh?}]} per `bin_sec` bin. speeds: track id -> km/h (calibrated cameras only)."""
+        """{lane: [{t_start, t_end, count, veh_per_min, occupancy, mean_vehicles, observed_sec,
+        density_veh_km?, mean_speed_kmh?}]} per `bin_sec` bin. speeds: track id -> km/h (calibrated cameras
+        only). When frames of a bin were skipped (view gate), veh_per_min is over the `observed_sec` seconds
+        actually analysed, like occupancy and mean_vehicles."""
         if not self._frames:
             return {l: [] for l in self.lanes}
         t_end = self._frames[-1] / self.fps
@@ -146,12 +148,15 @@ class LaneMetrics:
                 idx = bins.get(b, [])
                 cross = [c for c in counter.crossings if c.lane == l and lo <= c.frame / self.fps < hi]
                 span = max(1e-6, min(hi, t_end + 1.0 / self.fps) - lo)
+                seen = len(idx) / self.fps
+                # frames skipped (a rotating view was elsewhere): the rate is over the time actually seen
+                per = seen if seen < span - 1.5 / self.fps else span
                 n_mean = sum(self._n[l][i] for i in idx) / len(idx) if idx else 0.0
                 row = {"t_start": round(start_sec + lo, 2), "t_end": round(start_sec + hi, 2), "count": len(cross),
-                       "veh_per_min": round(len(cross) * 60.0 / span, 1),
+                       "veh_per_min": round(len(cross) * 60.0 / per, 1) if per > 0 else 0.0,
                        "occupancy": round(sum(self._occ[l][i] for i in idx) / len(idx), 3) if idx else 0.0,
                        "mean_vehicles": round(n_mean, 2),
-                       "observed_sec": round(len(idx) / self.fps, 2)}   # < bin length: frames skipped (view gate)
+                       "observed_sec": round(seen, 2)}   # < bin length: frames skipped (view gate)
                 if self.zone_len_m.get(l):
                     row["density_veh_km"] = round(n_mean / (self.zone_len_m[l] / 1000.0), 1)
                 vs = [speeds[c.track_id] for c in cross if speeds and c.track_id in speeds]

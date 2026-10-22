@@ -87,12 +87,14 @@ class AlprConfig:
         "LANE_CHANGE", "SOLID_LINE", "WRONG_WAY", "STOPPED", "SPEEDING", "TAILGATING"])
     lane_min_sec: float = 0.3          # a new lane counts once the vehicle has been in it this long ...
     lane_margin: float = 0.12          # ... clearly inside it (x box width past the boundary)
+    smooth_sec: float = 0.2            # moving average of the bottom-centre point before the rules
     wrong_way_sec: float = 1.0         # WRONG_WAY: moved against the lane direction within this time ...
     wrong_way_min_disp: float = 0.8    # ... by at least this many box heights
     stopped_sec: float = 5.0           # STOPPED: standing still in a lane this long while traffic flows
     still_speed: float = 0.08          # box heights / s = standing still
     moving_speed: float = 0.6          # box heights / s = the carriageway is flowing (not a queue)
     speed_zone_y: List[float] = field(default_factory=lambda: [0.0, 1.0])   # rows where speed is measured
+    speed_window_sec: float = 1.0      # each speed estimate is a straight-line fit over this much track
     speed_limit_kmh: float = 0.0       # SPEEDING (needs `calibration`); 0 = off
     tailgate_headway_sec: float = 1.0  # TAILGATING (needs `calibration`): headway at the count line below this
     tailgate_min_kmh: float = 50.0     # ... at or above this speed

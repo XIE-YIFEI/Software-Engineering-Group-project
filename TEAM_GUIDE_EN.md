@@ -25,10 +25,13 @@ python -m venv .venv
 ```
 
 Then run every command with `.venv\Scripts\python` (or run `.venv\Scripts\activate` once and use plain `python`).
-`requirements.txt` pins `numpy<2`. In this venv all unit tests pass (now 76) and `malaysia_road_anpr` reproduces the committed
+`requirements.txt` pins `numpy<2`. In this venv all unit tests pass (now 85) and `malaysia_road_anpr` reproduces the committed
 JSON field by field (tested with torch 2.3.1+cpu, ultralytics 8.4.171, numpy 1.26.4, opencv-python 4.11.0.86).
 
 - Plate OCR uses `fast-plate-ocr` (its ~10 MB model downloads automatically on first run).
+- The congestion measurement (section 10) decodes only keyframes with PyAV (`av`), which is in `requirements.txt`; a
+  unit test checks that every third-party package the code imports is listed there
+  (`test_requirements_cover_every_third_party_import`).
 - Keep `requirements.txt` ASCII-only: pip on a Chinese-locale Windows reads it as GBK and stops at the first non-ASCII
   character.
 - `fast-plate-ocr` / `easyocr` also pull in `opencv-python-headless`. If it is installed after `opencv-python`, `cv2` has
@@ -725,7 +728,7 @@ then estimates the frame that was left out.
 | profile change | today's value + the other day's change from t to t+h (keeps today's level, borrows the other day's shape) |
 | ARIMA | statsmodels; order chosen by AIC on the training day ((2,1,1) / (1,1,1) chosen), parameters then fixed and the Kalman filter updated minute by minute on the test day |
 | LightGBM | lags, rolling means / standard deviations, 5-minute trend, time of day (sin/cos); one model per horizon, predicting the *change*; trained on the training day's 4 zone series as well (a global model, 5× the data) |
-| GRU (PyTorch) | the last 60 minutes + time of day, 24 hidden units, predicts the change; also trained on the 4 zone series; the last 20% of the training day is used for early stopping |
+| GRU (PyTorch) | the last 60 minutes + time of day, 24 hidden units, predicts the change; also trained on the 4 zone series (each standardised with its own mean / std); the last 20% of each series is used for early stopping, with a 30-minute gap before it so that no training target falls inside the validation period |
 
 - **Strictly past-only**: a unit test rewrites all data after t and checks that the features and all seven models'
   forecasts made at t do not change.
@@ -748,8 +751,8 @@ Lower is better, bold is the best in its column, RMSE in brackets. A fill of 0.0
 | daily profile | 0.076 (0.127) | 0.077 (0.128) | 0.079 (0.131) | 0.093 (0.143) | 0.095 (0.145) | **0.098 (0.148)** |
 | profile change | 0.036 (0.054) | 0.064 (0.102) | 0.094 (0.145) | 0.054 (0.080) | 0.088 (0.127) | 0.119 (0.168) |
 | ARIMA | **0.031 (0.050)** | **0.054 (0.097)** | **0.078 (0.145)** | 0.054 (0.082) | 0.089 (0.139) | 0.134 (0.197) |
-| LightGBM | 0.038 (0.058) | 0.057 (0.094) | 0.093 (0.136) | 0.053 (0.079) | 0.083 (0.116) | 0.098 (0.135) |
-| GRU | 0.037 (0.054) | 0.061 (0.091) | 0.087 (0.125) | **0.053 (0.077)** | **0.076 (0.108)** | 0.112 (0.153) |
+| LightGBM | 0.038 (0.058) | 0.057 (0.094) | 0.093 (0.136) | **0.053 (0.079)** | 0.083 (0.116) | 0.098 (0.135) |
+| GRU | 0.042 (0.064) | 0.075 (0.119) | 0.080 (0.130) | 0.075 (0.106) | **0.078 (0.113)** | 0.106 (0.150) |
 
 **Congestion (fill ≥ 0.5)**: A started at 07:13 and 08:17 (it cleared once, 08:00–08:15), C at 07:12.
 
@@ -761,7 +764,7 @@ Lower is better, bold is the best in its column, RMSE in brackets. A fill of 0.0
 | profile change | 0.94 / 0.90 | 0.94 / 0.80 | 28, 2 | 1.00 / 0.94 | 0.97 / 0.92 | 33 | 0, 1 |
 | ARIMA | 0.93 / 0.80 | 0.94 / 0.72 | 3, 1 | 1.00 / 0.91 | 1.00 / 0.82 | 1 | 0, 0 |
 | LightGBM | 0.94 / 0.90 | 0.95 / 0.75 | 17, 3 | 1.00 / 0.99 | 0.96 / 0.96 | 35 | 0, 1 |
-| GRU | 0.93 / 0.92 | 0.93 / 0.85 | 7, 10 | 1.00 / 0.95 | 1.00 / 0.93 | 18 | 0, 0 |
+| GRU | 0.93 / 0.93 | 0.93 / 0.87 | 10, 10 | 1.00 / 0.93 | 1.00 / 0.86 | 10 | 0, 0 |
 
 **Texture occupancy: MAE** (each camera's own units)
 
@@ -772,7 +775,7 @@ Lower is better, bold is the best in its column, RMSE in brackets. A fill of 0.0
 | profile change | **0.011** | **0.018** | **0.025** | 0.013 | **0.020** | **0.028** |
 | ARIMA | 0.012 | 0.021 | 0.032 | **0.012** | 0.022 | 0.036 |
 | LightGBM | 0.015 | 0.024 | 0.034 | 0.016 | 0.028 | 0.029 |
-| GRU | 0.016 | 0.043 | 0.069 | 0.013 | 0.022 | 0.046 |
+| GRU | 0.015 | 0.037 | 0.068 | 0.015 | 0.023 | 0.062 |
 
 ![Both test days: measured fill and the forecasts made 30 minutes earlier](docs/images/forecast_to_ciq.png)
 
@@ -780,8 +783,8 @@ Findings:
 1. **5 minutes**: ARIMA / persistence are the hardest to beat (the AIC-chosen orders (2,1,1) / (1,1,1) behave almost
    like persistence). This is the usual result in traffic forecasting: little changes within a few minutes.
 2. **15–30 minutes**: the machine-learning models start to help. On test day C the GRU cuts the 15-minute error from
-   0.090 to 0.076 (−16%) and LightGBM the 30-minute error from 0.133 to 0.098 (−26%); on test day A the differences are
-   small (30 minutes: ARIMA 0.078, GRU 0.087, but the GRU has the lowest RMSE, i.e. fewer large misses).
+   0.090 to 0.078 (−13%) and LightGBM the 30-minute error from 0.133 to 0.098 (−26%); on test day A the differences are
+   small (30 minutes: ARIMA 0.078, GRU 0.080, but the GRU has the lowest RMSE, 0.130, i.e. fewer large misses).
 3. **Early warning**: persistence / ARIMA only notice the congestion once it has started (1–3 minutes); the daily
    profile, profile change and LightGBM warn about half an hour ahead (A 07:13: 31 / 28 / 17 minutes; C 07:12: 30 / 33 /
    35 minutes) with almost no false alarms (0–1). Before A's second onset at 08:17 the road had been free for only
@@ -896,3 +899,34 @@ regression above.
   scenes (table above). Two runs of the same setting differ by about ±20% (another run gave 13.2 FPS); the table comes
   from one continuous run. The CPU alone does not reach 30 FPS yet; the RTX 5070 GPU is the next step.
 - Congestion measurement (section 10): keyframes only, about 3 minutes per 10 hours of video, roughly 200× real time, so a live stream is easy to keep up with; the forecast itself runs once a minute and costs next to nothing.
+
+## 12. Code review fixes (2026-10-22)
+
+A code review listed 15 problems (11 in the new features of sections 10 and 11, 4 in the older pipeline). Each was checked
+against the code; the ones that exist were fixed, each with a unit test that fails on the code before the fix. There are
+now 85 unit tests (the 76 before + 9 new), all passing. Re-run after the fixes: the plate results (roadside 8/9,
+guardhouse 5/5, violations 7/7 with 0 false alerts) and the lanes (all 355 crossings) give results JSON identical, field
+by field, to the committed ones; in the forecasting evaluation the predictions of all models except the GRU are unchanged.
+
+| Reported problem | Does it exist? | What was done |
+|---|---|---|
+| `requirements.txt` lacks PyAV (`av`), which `alpr/congestion.py` uses to decode only keyframes | Yes: in a fresh venv `--measure` fails with `No module named 'av'` | added `av>=12.0`; a new unit test checks that every third-party package the code imports is in `requirements.txt` |
+| Rotating view (`view_gate`): the reported FPS counted the skipped frames | Yes: in 60 s of recording B only 600 of 1,800 frames are analysed, and 46 FPS was reported | `frames_per_sec` counts analysed frames only (15.5 FPS); the speed at which the video is read is `view_gate.video_frames_per_sec` |
+| Rotating view: the 10-second `veh_per_min` divided by the whole 10 s, not the seconds seen | Yes (rotating views only: 1 vehicle in 3 s seen read as 6 veh/min instead of 20) | divided by `observed_sec` when frames were skipped; videos without skipped frames are unchanged |
+| GRU: `best_state` could stay empty | Only if every validation loss is NaN (e.g. a series whose first 60+ minutes are missing) | starts from a copy of the initial weights; windows ending on a missing value are not trained on |
+| GRU: training targets fall inside the validation period (mild leakage into early stopping) | Yes | a 30-minute gap (the longest horizon) between training and validation |
+| GRU: pooled series standardised with the main series' mean / std | Only for measures on different scales, such as a sum over zones (one zone's vehicles spread 1/3–1/7 as much as the direction's); the fill / occupancy used here are ratios on the same scale | scaling every series by its own statistics was tried: tested on the other camera the errors grew up to 4× (the test day can only be scaled with training statistics, and the two cameras differ in level), so it was not adopted; instead a pool whose spread differs by more than 3× raises an error (LightGBM checks the same) |
+| ARIMA: `best` is None when every order fails | Practically unreachable: statsmodels "fits" even empty and constant series; the real risk is a meaningless model fitted silently on a day with almost no data | fewer than 10 observed training minutes raises a clear error; candidates with a non-finite AIC are skipped; random-walk fallback |
+| ARIMA: near the end of the test day the model is rebuilt 30 times per minute | No: `get_prediction` already forecasts past the end of the series (checked on 200 origins: that branch never ran, identical results) | the dead branch removed; forecasts unchanged |
+| Daily profile / profile change find no value across midnight | Yes (the current data does not cross midnight, so no result changes) | minute of day taken modulo 1440 |
+| `observed_sec` fixed at 5 s per keyframe | Yes: the measured keyframe spacing is 5.07 s on A, 5.33 s on C and about 4.1 s on B | the spacing of every piece is measured and stored with each sample; the three recordings were re-measured, and every column except `observed_sec` is identical |
+| Hand counts matched by HH:MM:SS only, which repeats after 24 hours | Yes (the current recordings are shorter than 24 hours) | full times `YYYY-MM-DDTHH:MM:SS` accepted; an HH:MM:SS that matches two dates raises |
+| A cloned plate flagged only on the vehicle confirmed later | Not in the order described (when the second plate is first confirmed, both are flagged), but yes in another case: the second vehicle's reading changes to the same plate later, after the first vehicle has left the view | when an entry's twins (same plate, seen apart) change, the twins are re-checked too |
+| Overlapping plate boxes OCR'd before the quality gate and the OCR budget | Yes | OCR compares the boxes only if a reading would be taken from one of them; otherwise no OCR call |
+| `RuleParams.from_config` ignores `smooth_sec` and `speed_window_sec` | Yes, and the config had no such keys | added to the config (defaults unchanged) and passed through |
+| `quality.assess` converts to grey twice; `render_hud` allocates a full 1920×1080 buffer per frame for the tether line | Yes | one grey conversion; a buffer the size of the line's bounding box (pixel-identical on 300 random lines) |
+
+**New GRU numbers**: without the leakage into early stopping the GRU moves both ways (one random seed and one training
+day: the GRU is unstable anyway): on test day C its 15-minute error is 0.078 (before 0.076), still the best in that column;
+on test day A the 30-minute error is 0.080 (before 0.087); on test day C the 5-minute error is 0.075 (before 0.053), and
+LightGBM is now the best there. The tables and findings of section 10.5 use the new numbers; the findings are unchanged.

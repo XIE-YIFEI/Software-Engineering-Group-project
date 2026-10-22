@@ -107,7 +107,7 @@ fill ≥ 0.5 即超过 Greenshields 模型的临界密度，算拥堵），一�
 |---|---|---|
 | 测量与人工计数对比（留一法，4 个区段合计） | 平均误差 7.0 辆 / 平均 21.6 辆，r = 0.83 | 5.8 辆 / 26.2 辆，r = 0.95 |
 | 拥堵开始（人工计数确认在 07:00–07:15 之间） | 07:13（08:17 再次开始） | 07:12 |
-| 15 分钟预测误差（fill）：持续 → 最好的模型 | 0.054 → 0.054（ARIMA） | 0.090 → **0.076**（GRU） |
+| 15 分钟预测误差（fill）：持续 → 最好的模型 | 0.054 → 0.054（ARIMA） | 0.090 → **0.078**（GRU） |
 | 30 分钟预测误差（fill）：持续 → 最好的模型 | 0.078 → 0.078（ARIMA） | 0.133 → **0.098**（LightGBM） |
 | 提前预警（30 分钟预测，07:1x 那次） | 日间规律 31 分钟，LightGBM 17 分钟，持续 3 分钟 | LightGBM 35 分钟，日间规律 30 分钟，持续 1 分钟 |
 
@@ -421,7 +421,7 @@ the Greenshields model, i.e. congested). Train on one day, test on the other, bo
 |---|---|---|
 | Measurement vs hand counts (leave-one-out, sum of 4 zones) | mean error 7.0 / mean 21.6 vehicles, r = 0.83 | 5.8 / 26.2 vehicles, r = 0.95 |
 | Congestion onset (hand counts: between 07:00 and 07:15) | 07:13 (again at 08:17) | 07:12 |
-| 15-minute forecast error (fill): persistence → best model | 0.054 → 0.054 (ARIMA) | 0.090 → **0.076** (GRU) |
+| 15-minute forecast error (fill): persistence → best model | 0.054 → 0.054 (ARIMA) | 0.090 → **0.078** (GRU) |
 | 30-minute forecast error (fill): persistence → best model | 0.078 → 0.078 (ARIMA) | 0.133 → **0.098** (LightGBM) |
 | Early warning (30-minute forecast, the 07:1x onset) | daily profile 31 min, LightGBM 17 min, persistence 3 min | LightGBM 35 min, daily profile 30 min, persistence 1 min |
 

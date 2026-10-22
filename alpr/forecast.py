@@ -49,6 +49,7 @@ WINDOWS = (5, 15, 30)                               # rolling mean / std windows
 CONGESTION_OCC = 0.30
 SMOOTH_MIN = 5                                      # congestion state from the 5-minute mean occupancy
 ONSET_MIN_LEN = 10                                  # an onset counts when congestion lasts this long
+MIN_FIT_MINUTES = 10                                # fewer observed training minutes: ARIMA refuses to fit
 
 
 # ---------------------------------------------------------------------------- series
@@ -193,7 +194,7 @@ class DailyProfile(Forecaster):
 
     def forecast(self, test, horizons):
         mod = np.asarray(test.minute_of_day)
-        return {h: np.array([self.profile.get(int(m) + h, np.nan) for m in mod]) for h in horizons}
+        return {h: np.array([self.profile.get((int(m) + h) % 1440, np.nan) for m in mod]) for h in horizons}
 
 
 class ProfileChange(DailyProfile):
@@ -205,7 +206,8 @@ class ProfileChange(DailyProfile):
         y = _ffill(test.y)
         mod = np.asarray(test.minute_of_day)
         now = np.array([self.profile.get(int(m), np.nan) for m in mod])
-        return {h: y + np.array([self.profile.get(int(m) + h, np.nan) for m in mod]) - now for h in horizons}
+        return {h: y + np.array([self.profile.get((int(m) + h) % 1440, np.nan) for m in mod]) - now
+                for h in horizons}
 
 
 class ARIMAForecaster(Forecaster):
@@ -223,6 +225,8 @@ class ARIMAForecaster(Forecaster):
         from statsmodels.tsa.arima.model import ARIMA
         y = _ffill(train.y)
         y = y[~np.isnan(y)]
+        if len(y) < MIN_FIT_MINUTES:          # statsmodels "fits" even an empty series, silently meaningless
+            raise ValueError(f"ARIMA: the training day has {len(y)} observed minutes, fewer than {MIN_FIT_MINUTES}")
         best = None
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -231,8 +235,10 @@ class ARIMAForecaster(Forecaster):
                     res = ARIMA(y, order=order, trend="c" if order[1] == 0 else "n").fit()
                 except Exception:                                    # noqa: BLE001  (non-convergent order)
                     continue
-                if best is None or res.aic < best.aic:
+                if np.isfinite(res.aic) and (best is None or res.aic < best.aic):
                     best = res
+            if best is None:                                         # no candidate converged
+                best = ARIMA(y, order=(0, 1, 0), trend="n").fit()   # random walk = persistence (recorded as the order)
         self.res = best
         self.order = best.model.order
         return self
@@ -248,14 +254,28 @@ class ARIMAForecaster(Forecaster):
             warnings.simplefilter("ignore")
             res = self.res.apply(y[first:])                          # same parameters, test-day data
             for t in range(first, n):
-                fc = res.get_prediction(start=t - first + 1, end=t - first + hmax, dynamic=True).predicted_mean \
-                    if t - first + 1 < n - first else res.forecast(hmax)
-                fc = np.asarray(fc, float)
-                if len(fc) < hmax:                                   # past the end: extend from t
-                    fc = np.asarray(self.res.apply(y[first:t + 1]).forecast(hmax), float)
+                # dynamic prediction from t: uses the data up to t only, and runs past the end of the day
+                fc = np.asarray(res.get_prediction(start=t - first + 1, end=t - first + hmax,
+                                                   dynamic=True).predicted_mean, float)
                 for h in horizons:
                     out[h][t] = fc[h - 1]
         return out
+
+
+POOL_SPREAD_RATIO = 3.0     # a pooled series may spread at most this many times more (or less) than the training one
+
+
+def check_pool_scale(train: Target, pool: Sequence[Target]) -> None:
+    """Pooled series are learnt from in the training series' units (LightGBM) or scaling (GRU), so they must
+    be on its scale: a ratio such as fill or occupancy is, a sum over zones such as vehicles is not (the
+    direction's total spreads 3-7x more than one zone's). Raises ValueError for such a pool."""
+    sd0 = np.nanstd(train.y)
+    for k, p in enumerate(pool):
+        sd = np.nanstd(p.y)
+        if sd0 > 0 and sd > 0 and not 1 / POOL_SPREAD_RATIO <= sd / sd0 <= POOL_SPREAD_RATIO:
+            raise ValueError(f"pooled series {k + 1} spreads {sd / sd0:.2f}x as much as the training series: pool "
+                             f"a measure on the same scale for a zone and the whole direction (fill, occupancy, "
+                             f"excess), not one that sums over zones (vehicles)")
 
 
 class LightGBMForecaster(Forecaster):
@@ -273,9 +293,10 @@ class LightGBMForecaster(Forecaster):
         return past_features(tgt.y, tgt.minute_of_day, {k: tgt.extra[k] for k in self.extra_keys if k in tgt.extra})[0]
 
     def fit(self, train, horizons: Sequence[int] = HORIZONS, pool: Sequence[Target] = ()):
-        """pool: more series of the training day in the same units (e.g. the zones of the direction):
-        one model is trained on all of them (a "global" model; 1 day is little data)."""
+        """pool: more series of the training day on the same scale (e.g. the zones' fill beside the
+        direction's fill): one model is trained on all of them (a "global" model; 1 day is little data)."""
         import lightgbm as lgb
+        check_pool_scale(train, pool)
         params = {"objective": "regression", "learning_rate": 0.03, "num_leaves": 15, "min_data_in_leaf": 10,
                   "bagging_fraction": 0.8, "bagging_freq": 1, "feature_fraction": 0.8, "seed": self.seed,
                   "deterministic": True, "num_threads": 4, "verbose": -1}
@@ -301,8 +322,13 @@ class LightGBMForecaster(Forecaster):
 class GRUForecaster(Forecaster):
     """Small GRU on the last `seq` minutes of [y, extra measures, time of day]; one output per horizon (the
     change from the last value, like LightGBM).
-    Inputs are standardised with the training day's mean / std; the last 20 % of the training day
-    (chronological) is the validation set for early stopping."""
+    Inputs are standardised with the training series' mean / std, pooled series and the test day alike: the
+    test day can only be scaled with training statistics, so the model has to cope with a level shift (another
+    camera). Scaling every series by its own statistics was tried: on the other camera the errors grew up to
+    4x. Pooled series must therefore be on the training series' scale (`check_pool_scale`). The last 20 % of
+    each training series (chronological) is the
+    validation set for early stopping, with a gap of the longest horizon before it, so that no training
+    target lies inside the validation period."""
     name = "GRU"
 
     def __init__(self, extra_keys: Sequence[str] = (), seq: int = 60, hidden: int = 24, epochs: int = 300,
@@ -320,31 +346,43 @@ class GRUForecaster(Forecaster):
         Z = np.nan_to_num(Z, nan=0.0)
         return np.stack([Z[e - self.seq + 1:e + 1] for e in ends]).astype(np.float32)
 
+    def _split(self, ends: np.ndarray, hmax: int) -> Tuple[np.ndarray, np.ndarray]:
+        """(training, validation) masks over the window ends of one series: the last 20 % validate, and
+        training stops `hmax` minutes before them (its targets y[end + h] stay out of the validation period)."""
+        n_val = max(1, int(0.2 * len(ends)))
+        cut = ends[len(ends) - n_val]
+        return ends < cut - hmax, ends >= cut
+
     def fit(self, train, horizons: Sequence[int] = HORIZONS, pool: Sequence[Target] = ()):
-        """pool: more series of the training day in the same units, trained on together (see LightGBM)."""
+        """pool: more series of the training day in the same measure, trained on together (see LightGBM)."""
         import torch
         torch.manual_seed(self.seed)
         np.random.seed(self.seed)
         self.horizons = list(horizons)
-        series = [train] + list(pool)
+        hmax = max(horizons)
+        check_pool_scale(train, pool)
         X = self._inputs(train)
         self.mu, self.sd = np.nanmean(X, 0), np.nanstd(X, 0) + 1e-6
         parts = []
-        for t in series:
+        for t in [train] + list(pool):
             Xt, y = self._inputs(t), _ffill(t.y)
-            ends = np.array([e for e in range(self.seq - 1, len(y) - max(horizons))
-                             if not np.isnan([y[e + h] for h in horizons]).any()], int)
-            if not len(ends):
+            ends = np.array([e for e in range(self.seq - 1, len(y) - hmax)
+                             if not np.isnan(y[e]) and not np.isnan([y[e + h] for h in horizons]).any()], int)
+            if len(ends) < 2:
                 continue
             W = self._windows(Xt, t.minute_of_day, ends)
             T = np.column_stack([(y[ends + h] - y[ends]) / self.sd[0] for h in horizons]).astype(np.float32)
-            n_val = max(1, int(0.2 * len(ends)))                # last 20 % of each series (chronological)
-            parts.append((W[:-n_val], T[:-n_val], W[-n_val:], T[-n_val:]))
+            tr, va = self._split(ends, hmax)
+            parts.append((W[tr], T[tr], W[va], T[va]))
+        if not parts or not sum(len(p[0]) for p in parts):
+            raise ValueError(f"GRU: training day too short (needs more than {self.seq} + {hmax} minutes, plus the "
+                             f"validation period)")
         Wtr, Ttr = np.concatenate([p[0] for p in parts]), np.concatenate([p[1] for p in parts])
         Wva, Tva = np.concatenate([p[2] for p in parts]), np.concatenate([p[3] for p in parts])
-        net = _GRUNet(W.shape[2], self.hidden, len(horizons))
+        net = _GRUNet(Wtr.shape[2], self.hidden, len(horizons))
         opt = torch.optim.Adam(net.parameters(), lr=3e-3, weight_decay=1e-4)
-        best, best_state, bad = np.inf, None, 0
+        best, bad = np.inf, 0
+        best_state = {k: v.clone() for k, v in net.state_dict().items()}   # kept if validation never improves
         xt, yt = torch.from_numpy(Wtr), torch.from_numpy(Ttr)
         xv, yv = torch.from_numpy(Wva), torch.from_numpy(Tva)
         for _ in range(self.epochs):

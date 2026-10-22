@@ -1186,10 +1186,11 @@ def render_hud(img: np.ndarray, lead: Optional[Dict], secondary: List[Dict], fps
         if pb is not None:                                  # tether: plate -> card
             tp = (int((pb[0] + pb[2]) / 2), int(pb[1]))
             cp = (cx1 if cx1 > tp[0] else cx1 + cw, cy1 + ch // 2)
-            line = np.zeros(img.shape[:2], np.float32)
-            cv2.line(line, tp, cp, 1.0, 2, cv2.LINE_AA)
-            ys, xs = slice(max(0, min(tp[1], cp[1]) - 2), max(tp[1], cp[1]) + 3), slice(max(0, min(tp[0], cp[0]) - 2), max(tp[0], cp[0]) + 3)
-            _blend(img[ys, xs], 0, 0, line[ys, xs], (255, 255, 255), 0.6)
+            lx0, ly0 = max(0, min(tp[0], cp[0]) - 2), max(0, min(tp[1], cp[1]) - 2)
+            lx1, ly1 = min(w, max(tp[0], cp[0]) + 3), min(h, max(tp[1], cp[1]) + 3)
+            line = np.zeros((ly1 - ly0, lx1 - lx0), np.float32)    # the tether's bounding box only
+            cv2.line(line, (tp[0] - lx0, tp[1] - ly0), (cp[0] - lx0, cp[1] - ly0), 1.0, 2, cv2.LINE_AA)
+            _blend(img[ly0:ly1, lx0:lx1], 0, 0, line, (255, 255, 255), 0.6)
             dot(img, tp, 4, (255, 255, 255))
         glass(img, (cx1, cy1, cx1 + cw, cy1 + ch), 22, alpha=0.6, border_alpha=0.16)
         T.add((cx1 + 18, cy1 + 24), f"{lead['vtype']} · #{lead['track_id']}", LABEL2, _font("semibold", 14), "lm")

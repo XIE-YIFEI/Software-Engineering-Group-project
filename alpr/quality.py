@@ -34,8 +34,8 @@ def assess(crop_bgr: np.ndarray, min_w: int = 28, min_h: int = 10,
     if crop_bgr.size == 0:
         return PlateQuality(0.0, 0.0, 0.0, False)
     h, w = crop_bgr.shape[:2]
-    sharp = sharpness(crop_bgr)
     gray = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2GRAY) if crop_bgr.ndim == 3 else crop_bgr
+    sharp = sharpness(gray)                                  # one grey conversion for both measures
     mean = float(gray.mean())
     exposure = max(0.0, 1.0 - abs(mean - 128.0) / 128.0)
     size_term = min(1.0, w / 120.0)

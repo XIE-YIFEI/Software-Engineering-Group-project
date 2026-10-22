@@ -364,11 +364,16 @@ class AlprPipeline:
         group = [first] + [b for b, _ in cands[1:] if _contain(b, first) > 0.5][:2]
         chosen, read = first, None
         if len(group) > 1:
-            options = []
-            for b in group:
-                r = self.ocr.read_plate(self._crop(frame, (vx1 + b[0], vy1 + b[1], vx1 + b[2], vy1 + b[3])))
-                options.append(((r is not None and r.valid, r.conf if r else 0.0), b, r))
-            _, chosen, read = max(options, key=lambda o: o[0])
+            crops = [self._crop(frame, (vx1 + b[0], vy1 + b[1], vx1 + b[2], vy1 + b[3])) for b in group]
+            # OCR only when a reading would be taken from one of them: a far / blurry plate, or a vehicle
+            # past its OCR budget, costs no OCR call here (the most confident box is shown instead)
+            if any(self._wants_read(st, assess(c, cfg.min_plate_w_px, cfg.min_plate_h_px, cfg.min_sharpness,
+                                               cfg.sharp_ref), b[2] - b[0]) for b, c in zip(group, crops)):
+                options = []
+                for b, c in zip(group, crops):
+                    r = self.ocr.read_plate(c)
+                    options.append(((r is not None and r.valid, r.conf if r else 0.0), b, r))
+                _, chosen, read = max(options, key=lambda o: o[0])
         px1, py1, px2, py2 = chosen
         st.plate_rel, st.last_hit = (px1 / vw, py1 / vh, px2 / vw, py2 / vh), idx
         crop = self._crop(frame, (vx1 + px1, vy1 + py1, vx1 + px2, vy1 + py2))
@@ -376,11 +381,8 @@ class AlprPipeline:
         if q.score > st.best_crop_q:
             st.best_crop, st.best_crop_q = crop.copy(), q.score
 
-        # The OCR budget only bounds low-resolution reads (far plates are misread, and consistently so).
-        # Once a plate reaches full resolution it is read every time: those are the reads that count.
         pw = px2 - px1
-        if q.ok and (st.n_reads < cfg.ocr_max_readings or pw >= cfg.ocr_ref_plate_w
-                     or pw >= st.best_read_w * REREAD_GROWTH or q.score > st.best_ocr_q + 0.1):
+        if self._wants_read(st, q, pw):
             st.n_reads += 1
             st.best_ocr_q = max(st.best_ocr_q, q.score)
             st.best_read_w = max(st.best_read_w, pw)
@@ -392,6 +394,14 @@ class AlprPipeline:
                 # a far plate (few pixels) is misread consistently, so its vote counts with resolution^2
                 weight_q = q.score * min(1.0, pw / cfg.ocr_ref_plate_w) ** 2
                 self.voter.add(v["track_id"], read.text, read.conf, weight_q, valid=read.valid)
+
+    def _wants_read(self, st: TrackState, q, pw: int) -> bool:
+        """Is a crop of quality `q` and width `pw` px read now? The OCR budget only bounds low-resolution
+        reads (far plates are misread, and consistently so). Once a plate reaches full resolution it is
+        read every time: those are the reads that count."""
+        cfg = self.cfg
+        return q.ok and (st.n_reads < cfg.ocr_max_readings or pw >= cfg.ocr_ref_plate_w
+                         or pw >= st.best_read_w * REREAD_GROWTH or q.score > st.best_ocr_q + 0.1)
 
     def _plate_box(self, v: Dict, st: TrackState, idx: int):
         if st.plate_rel is None or idx - st.last_hit > self.cfg.plate_ttl_frames:
@@ -472,7 +482,9 @@ class AlprPipeline:
     def _check(self, e: LogEntry) -> None:
         """(Re)run the registry rules on a log entry when its plate, type, colour or twins changed. A
         camera plate is only checked while its reading is CONFIRMED, so a passing misread never raises
-        (or clears) an alert."""
+        (or clears) an alert. When its twins (the same plate on a vehicle seen apart from it) change, the
+        twins are re-checked too: a cloned plate is flagged on both vehicles even when one of them has
+        left the view and gets no update of its own."""
         if self.checker is None or (not e.simulated and e.result.status != CONFIRMED):
             return
         twins = sorted(t for o in self.log if o is not e and not o.simulated and o.result.compact == e.result.compact
@@ -480,6 +492,7 @@ class AlprPipeline:
         key = (e.result.compact, e.result.valid, e.vtype, e.colour, tuple(twins))
         if key == e.checked:
             return
+        changed = set(twins) ^ set(e.checked[4] if len(e.checked) == 5 else ())
         e.checked = key
         before = {a.code for a in e.alerts}
         e.alerts = self.checker.check(e.result.compact, valid=e.result.valid, when=self._clock(e.first_frame),
@@ -488,6 +501,10 @@ class AlprPipeline:
             if a.code not in before:
                 print(f"  ALERT {self.cfg.start_sec + e.first_frame / self.fps:6.1f}s  {e.result.text:<11} "
                       f"{a.code:<14} {a.message}{'  [SIMULATED]' if e.simulated else ''}")
+        if changed:
+            for o in self.log:
+                if o is not e and not o.simulated and o.track_ids & changed:
+                    self._check(o)
 
     def _inject_sim_events(self, idx: int) -> None:
         """Add the SIMULATED sightings due by this frame (fictitious plates that demonstrate the alerts)."""
@@ -822,6 +839,7 @@ def run(cfg: AlprConfig) -> int:
                   f"plates {st['plates']} | last {last.text + ' ' + last.status if last else '-'}")
     cap.release()
     elapsed = max(1e-3, time.time() - t_start)                 # frames only (the end card is not timed)
+    n_run = n_in_view if gate is not None else n               # frames that went through the models
     if writer is not None and cfg.hud_mode == "dashboard" and cfg.summary_sec > 0:   # end card: every vehicle
         card = render_summary(pipe.log, pipe._stats(n), cfg, frame=last_frame, lanes=pipe._lane_view(n, session=True))
         for _ in range(int(cfg.summary_sec * fps)):
@@ -836,9 +854,10 @@ def run(cfg: AlprConfig) -> int:
               "processing": {"model_backend": "openvino" if pipe._vehicle_args else "pt",
                              "openvino_device": cfg.openvino_device if pipe._vehicle_args else None,
                              "headless": cfg.headless, "read_plates": cfg.read_plates,
-                             "frames_per_sec": round(n / elapsed, 2)}}
-    if gate is not None:
-        report["view_gate"] = {"frames_in_view": n_in_view, "frames": n, "template": cfg.view_gate.get("template")}
+                             "frames_per_sec": round(n_run / elapsed, 2)}}
+    if gate is not None:                                       # other views are read and skipped, not analysed
+        report["view_gate"] = {"frames_in_view": n_in_view, "frames": n, "template": cfg.view_gate.get("template"),
+                               "video_frames_per_sec": round(n / elapsed, 2)}
     if pipe.counter is not None:
         report["flow"] = {"count_line_y": cfg.count_line_y, "total": pipe.counter.total,
                           "by_type": pipe.counter.by_type(),
@@ -857,7 +876,9 @@ def run(cfg: AlprConfig) -> int:
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
     print("=" * 64)
-    print(f"done: {n} frames in {elapsed:.1f}s ({n / elapsed:.1f} FPS)"
+    print(f"done: {n} frames in {elapsed:.1f}s ({n_run / elapsed:.1f} FPS)"
+          + (f"  view gate: {n_in_view} of {n} frames analysed, video read at {n / elapsed:.1f} FPS"
+             if gate is not None else "")
           + (f"  video -> {cfg.out} ({writer.codec})" if writer is not None else "  (headless: no video)"))
     for r in rows:
         print(f"  {r['first_sec']:>6.1f}s  {r['vtype']:<10} {r['plate']:<12} {r['status']:<10} "

@@ -47,6 +47,7 @@ DEFAULTS = {"edge_thresh": 40.0,      # Sobel magnitude (on a slightly blurred g
             "baseline_window": ["03:00", "05:00"],   # night hours whose median occupancy is each zone's baseline
             "jam_delta": 0.15,        # a zone this far above its baseline is jammed (queue = jammed zones)
             "every_keyframe": 1}      # use every Nth keyframe
+DEFAULT_KEYFRAME_SEC = 5.0    # keyframe spacing assumed for samples measured before it was recorded ("dt")
 
 
 def sources(pattern: str) -> List[str]:
@@ -154,13 +155,19 @@ def measure_profile(cfg, out_path: str, log=print) -> Dict:
     for p in paths:
         n0 = len(rows)
         p0 = piece_start(p)
+        secs = []
         for sec, f in keyframes(p, every):
+            secs.append(sec)
             if p0 + sec < cfg.start_sec or (gate is not None and not gate(f)):
                 continue                                    # before the profile's start, or another view
             light, occ = meter.measure(f)
             rows.append({"time": clock_of(cfg, p, sec).isoformat(timespec="seconds"), "piece": os.path.basename(p),
                          "sec": round(sec, 3), "lighting": light, "zones": {k: round(v, 4) for k, v in occ.items()}})
-        log(f"{os.path.basename(p)}: {len(rows) - n0} keyframes")
+        # each sample stands for the time to the next one used: this piece's keyframe spacing (x every)
+        dt = round(float(np.median(np.diff(secs))), 3) if len(secs) > 1 else DEFAULT_KEYFRAME_SEC * every
+        for r in rows[n0:]:
+            r["dt"] = dt
+        log(f"{os.path.basename(p)}: {len(rows) - n0} keyframes, one every {dt:.2f} s")
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     res = {"profile": cfg.profile, "zones": [l.name for l in meter.lm.lanes],
            "groups": meter.lm.groups(), "params": meter.p, "samples": rows}
@@ -170,8 +177,33 @@ def measure_profile(cfg, out_path: str, log=print) -> Dict:
 
 
 # ---------------------------------------------------------------------------- calibration to hand counts
+def match_counts(samples: Sequence[dict], counts: Sequence[Tuple[str, str, int]]) -> List[Tuple[str, str, str, float, int]]:
+    """Hand counts -> (zone, time, lighting, occupancy, count) of the keyframe they were counted on. The time
+    is 'HH:MM:SS' (enough within one day) or the full 'YYYY-MM-DDTHH:MM:SS', needed when the samples span
+    more than a day: an HH:MM:SS that matches keyframes of two dates raises instead of picking one."""
+    by_full: Dict[str, dict] = {}
+    by_hms: Dict[str, List[dict]] = {}
+    for s in samples:
+        by_full[s["time"]] = s
+        by_hms.setdefault(s["time"][11:19], []).append(s)
+    pairs = []
+    for t, z, n in counts:
+        if "T" in t:
+            s = by_full.get(t)
+        else:
+            hits = by_hms.get(t, [])
+            if len({h["time"][:10] for h in hits}) > 1:
+                raise ValueError(f"hand count at {t} matches keyframes on {len(hits)} dates; "
+                                 f"write the full time, e.g. {hits[0]['time']}")
+            s = hits[-1] if hits else None
+        if s is not None and z in s["zones"]:
+            pairs.append((z, t, s["lighting"], s["zones"][z], n))
+    return pairs
+
+
 def load_counts(path: str) -> List[Tuple[str, str, int]]:
-    """Hand counts: lines 'HH:MM:SS zone vehicles' (time = the keyframe's camera clock, as on the GT sheet)."""
+    """Hand counts: lines 'HH:MM:SS zone vehicles' (time = the keyframe's camera clock, as on the GT sheet;
+    'YYYY-MM-DDTHH:MM:SS' when the recording spans more than a day)."""
     out = []
     with open(path, encoding="utf-8-sig") as f:
         for ln in f:
@@ -277,6 +309,11 @@ def minute_series(res: Dict, calib: Optional[Dict] = None, params: Optional[Dict
                  a calibration)"""
     p = {**DEFAULTS, **res.get("params", {}), **(params or {})}
     base = baselines(res, p["baseline_window"])
+    dt0 = DEFAULT_KEYFRAME_SEC * int(p["every_keyframe"])
+
+    def seen(ss):                                        # seconds of video the minute's samples stand for
+        return round(min(60.0, sum(s.get("dt", dt0) for s in ss)), 1)
+
     cap = (calib or {}).get("capacity", {})
     by_min: Dict[datetime, List[dict]] = {}
     for s in res["samples"]:
@@ -303,7 +340,7 @@ def minute_series(res: Dict, calib: Optional[Dict] = None, params: Optional[Dict
             r["density"].append(d)
             r["fill"].append(round(d / cap[z], 3) if d == d and cap.get(z) else nan)
             r["queue"].append(nan)
-            r["observed_sec"].append(len(ss) * 5.0)
+            r["observed_sec"].append(seen(ss))
         for g, members in groups.items():
             col = {k: [rows[z][k][-1] for z in members] for k in ("occupancy", "excess", "density", "fill")}
             ok = {k: [v for v in vs if v == v] for k, vs in col.items()}
@@ -321,7 +358,7 @@ def minute_series(res: Dict, calib: Optional[Dict] = None, params: Optional[Dict
                 r["queue"].append(float(sum(1 for e in ok["excess"] if e >= p["jam_delta"])))
             else:
                 r["queue"].append(nan)
-            r["observed_sec"].append(len(ss) * 5.0)
+            r["observed_sec"].append(seen(ss))
     return {"minutes": minutes, "zones": zones, "groups": groups, "rows": rows, "baselines": base}
 
 
@@ -443,10 +480,7 @@ def main(argv=None) -> int:
         if not os.path.exists(counts_path):
             print(f"no hand counts at {counts_path}")
         else:
-            gt = load_counts(counts_path)
-            by_t = {s["time"][11:19]: s for s in res["samples"]}
-            pairs = [(z, t, by_t[t]["lighting"], by_t[t]["zones"][z], n) for t, z, n in gt
-                     if t in by_t and z in by_t[t]["zones"]]
+            pairs = match_counts(res["samples"], load_counts(counts_path))
             calib = fit_calibration(pairs, res["groups"])
             calib["counts"] = os.path.relpath(counts_path)
             calib["capacity"] = {z: max(n for zz, _, _, _, n in pairs if zz == z) for z in calib["zones"]}

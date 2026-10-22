@@ -33,6 +33,7 @@ openvino>=2024.0            # optional: OpenVINO export of the YOLO models, fast
 
 # -- Traffic forecasting (alpr/forecast.py, alpr/congestion.py) --------------------
 yt-dlp>=2025.1              # downloading the recorded Causeway streams (alpr/download_hls.py)
+av>=12.0                    # PyAV: decodes only the keyframes (alpr/congestion.py --measure)
 statsmodels>=0.14           # AR / ARIMA baselines
 packaging<26                # packaging 26.x rejects "3.0.0.dev0" on Python 3.12.0 betas, so patsy (and with it
                             # statsmodels) fails to import

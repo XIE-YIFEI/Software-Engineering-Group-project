@@ -1071,6 +1071,144 @@ def test_zone_meter_texture_occupancy_and_calibration():
     assert s["rows"]["To"]["occupancy"][i + 1] != s["rows"]["To"]["occupancy"][i + 1]   # 07:01 not observed: NaN
 
 
+# ---------------------------------------------------------------- code review fixes (2026-10-22)
+def test_cloned_plate_is_flagged_on_both_vehicles_when_a_reading_settles_later():
+    """B's plate is first confirmed as a misread; when it settles on A's plate, A has left the view and gets
+    no update of its own, yet both are flagged."""
+    p, a, b = _bare_pipeline(), _car_track(), _car_track()
+    real = PlateResult("WA 1234 B", "WA1234B", 0.95, 10, CONFIRMED)
+    boxes = {1: [0, 0, 100, 100], 2: [300, 0, 400, 100]}                 # side by side
+    for idx in range(1, 10):
+        p._update_log(1, a, real, idx, boxes)
+        p._update_log(2, b, PlateResult("WA 1284 B", "WA1284B", 0.90, 6, CONFIRMED), idx, boxes)
+    assert [_codes(e.alerts) for e in p.log] == [[], []]
+    for idx in range(10, 14):                                           # A out of view
+        p._update_log(2, b, PlateResult("WA 1234 B", "WA1234B", 0.97, 20, CONFIRMED), idx, {2: boxes[2]})
+    assert [_codes(e.alerts) for e in p.log] == [[DUPLICATE], [DUPLICATE]]
+
+
+def test_overlapping_plate_boxes_cost_no_ocr_when_nothing_would_be_read():
+    class CountingOCR:
+        calls = 0
+
+        def read_plate(self, crop):
+            CountingOCR.calls += 1
+            return None
+
+    p = _bare_pipeline()
+    p.ocr, p.voter = CountingOCR(), PlateVoter(min_votes=3)
+    cands = [((10, 40, 110, 70), 0.9), ((10, 40, 110, 90), 0.8)]        # the plate, and plate + grille below it
+    vbox = (100, 100, 300, 300)
+    p._read_plate(np.full((400, 400, 3), 128, np.uint8), {"track_id": 1}, _car_track(), 5, vbox, cands)
+    assert CountingOCR.calls == 0                                       # flat crop: below the sharpness gate
+    sharp = np.random.default_rng(0).integers(0, 256, (400, 400, 3), dtype=np.uint8)
+    p._read_plate(sharp, {"track_id": 1}, _car_track(), 5, vbox, cands)
+    assert CountingOCR.calls >= 2                                       # readable: OCR settles which box it is
+
+
+def test_lane_rate_is_over_the_time_seen_on_a_rotating_view():
+    from alpr.flow import Crossing, LaneMetrics
+    lc = LineCounter(0.5)
+    lc.crossings.append(Crossing(15, 1, "Car", "inbound", "A1"))
+    gated = LaneMetrics(["A1"], 10.0)
+    for f in list(range(1, 31)) + [99]:                                 # 3.1 s of the 10 s bin seen, the rest skipped
+        gated.update(f, {}, {})
+    row = gated.time_series(lc, 10.0)["A1"][0]
+    assert row["observed_sec"] == 3.1 and row["veh_per_min"] == round(60 / 3.1, 1)
+    full = LaneMetrics(["A1"], 10.0)
+    for f in range(1, 100):
+        full.update(f, {}, {})
+    assert full.time_series(lc, 10.0)["A1"][0]["veh_per_min"] == 6.0   # every frame seen: over the whole bin
+
+
+def test_gru_validates_after_a_gap_and_pools_only_series_on_the_same_scale():
+    from alpr.forecast import GRUForecaster, LightGBMForecaster, Target
+    g = GRUForecaster(seq=30, hidden=4, epochs=3)
+    ends = np.arange(29, 300)
+    tr, va = g._split(ends, 30)
+    assert va.sum() == int(0.2 * len(ends)) and ends[tr].max() + 30 < ends[va].min()   # no training target inside
+    mod, occ, _ = _day(seed=3)
+    train = Target(np.r_[np.full(70, np.nan), occ[70:]], mod)          # starts late: a gap longer than seq
+    g.fit(train, (5, 15), pool=[Target(np.clip(occ + 0.1, 0, 1), mod)])   # a zone at its own level: same scale
+    out = g.forecast(Target(occ, mod), (5, 15))
+    assert np.isfinite(out[5][29:]).all() and np.isfinite(out[15][29:]).all()
+    for model in (GRUForecaster(seq=30, hidden=4, epochs=1), LightGBMForecaster()):
+        try:                                                            # a sum over zones (vehicles) is not
+            model.fit(train, (5, 15), pool=[Target(occ * 5.0, mod)])
+            raise AssertionError(f"{model.name} pooled a series on another scale")
+        except ValueError as e:
+            assert "same scale" in str(e)
+
+
+def test_arima_refuses_a_training_day_without_enough_data():
+    from alpr.forecast import ARIMAForecaster, Target
+    try:
+        ARIMAForecaster().fit(Target(np.r_[np.full(50, np.nan), 1.0, 2.0], np.arange(52)))
+    except ValueError as e:
+        assert "observed minutes" in str(e)
+    else:
+        raise AssertionError("ARIMA fitted on 2 minutes")
+
+
+def test_daily_profile_wraps_past_midnight():
+    from alpr.forecast import DailyProfile, ProfileChange, Target
+    day = Target(np.arange(120, dtype=float), np.r_[np.arange(1380, 1440), np.arange(0, 60)])   # 23:00 -> 00:59
+    assert DailyProfile(smooth=1).fit(day).forecast(day, (30,))[30][50] == 80.0   # 23:50 + 30 min = 00:20
+    assert ProfileChange(smooth=1).fit(day).forecast(day, (30,))[30][50] == 80.0
+
+
+def test_congestion_minutes_use_the_real_keyframe_spacing_and_full_times():
+    from alpr.congestion import match_counts, minute_series
+
+    def smp(t, dt=None):
+        return dict({"time": t, "lighting": "day", "zones": {"T1": 0.2}}, **({"dt": dt} if dt else {}))
+
+    res = {"zones": ["T1"], "groups": {"To": ["T1"]}, "params": {},
+           "samples": [smp(f"2023-03-22T07:00:{s:02d}", 2.0) for s in range(0, 60, 2)]}
+    s = minute_series(res)
+    assert s["rows"]["T1"]["observed_sec"] == [60.0] and s["rows"]["To"]["observed_sec"] == [60.0]
+    res["samples"] = [smp(f"2023-03-22T07:00:{s:02d}", 5.333) for s in (0, 6, 11)]
+    assert minute_series(res)["rows"]["T1"]["observed_sec"] == [16.0]
+    res["samples"] = [smp("2023-03-22T07:00:00"), smp("2023-03-22T07:00:05")]   # measured before "dt" was kept
+    assert minute_series(res)["rows"]["T1"]["observed_sec"] == [10.0]
+    two_days = [smp("2023-03-22T07:15:00"), smp("2023-03-23T07:15:00")]
+    try:
+        match_counts(two_days, [("07:15:00", "T1", 3)])
+        raise AssertionError("an HH:MM:SS matching two dates was accepted")
+    except ValueError:
+        pass
+    assert match_counts(two_days, [("2023-03-23T07:15:00", "T1", 3)]) == [("T1", "2023-03-23T07:15:00", "day", 0.2, 3)]
+
+
+def test_rule_params_take_smoothing_and_speed_window_from_the_config():
+    from alpr.behaviour import RuleParams
+    p = RuleParams.from_config(AlprConfig(smooth_sec=0.5, speed_window_sec=2.0))
+    assert (p.smooth_sec, p.speed_window_sec) == (0.5, 2.0)
+    d = RuleParams.from_config(AlprConfig())
+    assert (d.smooth_sec, d.speed_window_sec) == (RuleParams().smooth_sec, RuleParams().speed_window_sec)
+
+
+def test_requirements_cover_every_third_party_import():
+    import glob
+    import re
+    root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+    dist = {"cv2": "opencv-python", "PIL": "pillow", "yaml": "pyyaml", "fast_plate_ocr": "fast-plate-ocr",
+            "imageio_ffmpeg": "imageio-ffmpeg", "yt_dlp": "yt-dlp"}
+    with_ultralytics = {"torch", "torchvision"}
+    with open(os.path.join(root, "requirements.txt"), encoding="ascii") as f:   # ASCII only: pip reads it as GBK
+        listed = {re.split(r"[<>=!~\[\s]", s)[0].lower() for s in (ln.split("#")[0].strip() for ln in f) if s}
+    missing = set()
+    for path in glob.glob(os.path.join(root, "alpr", "*.py")) + [os.path.join(root, n) for n in ("run_alpr.py", "run_image.py")]:
+        with open(path, encoding="utf-8") as f:
+            for ln in f:
+                m = re.match(r"\s*(?:from\s+(\w+)[\w.]*\s+import\s|import\s+(\w+))", ln)
+                mod = m and (m.group(1) or m.group(2))
+                if (mod and mod not in sys.stdlib_module_names and mod not in ("alpr", "__future__")
+                        and mod not in with_ultralytics and dist.get(mod, mod).lower() not in listed):
+                    missing.add(f"{mod} ({os.path.basename(path)})")
+    assert not missing, f"imported but not in requirements.txt: {sorted(missing)}"
+
+
 if __name__ == "__main__":
     tests = {k: v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)}
     failed = 0

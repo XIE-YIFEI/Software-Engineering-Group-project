@@ -106,9 +106,11 @@ class RuleParams:
     def from_config(cls, cfg) -> "RuleParams":
         g = lambda k, d: getattr(cfg, k, d)     # noqa: E731
         return cls(rules=tuple(g("lane_rules", ALL_RULES)), lane_min_sec=g("lane_min_sec", 0.3),
-                   lane_margin=g("lane_margin", 0.12), wrong_way_sec=g("wrong_way_sec", 1.0),
+                   lane_margin=g("lane_margin", 0.12), smooth_sec=g("smooth_sec", 0.2),
+                   wrong_way_sec=g("wrong_way_sec", 1.0),
                    wrong_way_min_disp=g("wrong_way_min_disp", 0.8), stopped_sec=g("stopped_sec", 5.0),
                    still_speed=g("still_speed", 0.08), moving_speed=g("moving_speed", 0.6),
+                   speed_window_sec=g("speed_window_sec", 1.0),
                    speed_zone_y=tuple(g("speed_zone_y", (0.0, 1.0))), speed_limit_kmh=g("speed_limit_kmh", 0.0),
                    tailgate_headway_sec=g("tailgate_headway_sec", 1.0), tailgate_min_kmh=g("tailgate_min_kmh", 50.0),
                    count_line_y=g("count_line_y", 0.0), show_real_violations=g("show_real_violations", False))
