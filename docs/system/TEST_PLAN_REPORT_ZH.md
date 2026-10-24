@@ -48,7 +48,7 @@
 |---|---|---|
 | `test_importer_loads_every_demo_result` | FR-21、FR-13 | 4 个批次、35 条识别记录（7 个插入车牌、6 个合成）、13 条登记库告警 + 5 条车道告警、2 条关注名单和 1 条禁入命中、**没有任何告警指向真实车辆**、355 次过线、12 个车道事件、10 个被隐去、571 分钟预测；记录了每个源文件的 SHA-256；`seen_at` = 时钟起点 + `first_sec` |
 | `test_importer_is_idempotent_and_keeps_alert_workflow_state` | FR-21 | 导入两次，各表数量不变，已确认的告警仍是已确认 |
-| `test_importer_reproduces_the_committed_forecast_and_adds_the_zones` | FR-17、FR-21 | 导入时重新计算的 LightGBM 与已提交的预测 JSON 一致（最大差异 < 0.001）；另外算出 9 个路段 |
+| `test_importer_reproduces_the_committed_forecast_and_adds_the_zones` | FR-17、FR-21 | 导入时重新计算的 LightGBM 与已提交的预测 JSON 一致（最大差异 < 0.01：Windows 上为 0.0000，Linux CI 上为 0.0016，来自不同平台的浮点运算差异）；另外算出 9 个路段 |
 | `test_login_lockout_logout_and_csrf` | FR-1 | 5 次错误密码后账号锁定 5 分钟（正确密码也不行）；不带 CSRF 请求头的退出被拒绝；每次尝试都有审计记录；只保存 scrypt 哈希 |
 | `test_roles_see_only_their_scope` | FR-2 | 保安只看到本门岗；警察看不到公寓门岗；交通管理没有告警中心；只有管理员能管理用户；页面遵循同样规则；未登录访问被转到登录页 |
 | `test_masked_roles_see_masked_plates_and_blurred_crops_until_they_reveal_with_a_reason` | FR-8 | 打码车牌和模糊截图（字节不同）；看不到场景帧和车牌摄像头视频（403），车道视频正常（206）；显示完整车牌需要有效理由，之后显示车牌和清晰截图并记入日志；按车牌号检索需要理由且只做精确匹配；打码规则本身 |
