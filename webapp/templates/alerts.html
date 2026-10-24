@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row" style="margin-bottom:12px">
+  <span class="seg" id="tabs">
+    <button type="button" data-s="open" class="on">Open</button><button type="button" data-s="new">New</button>
+    <button type="button" data-s="acknowledged">Acknowledged</button><button type="button" data-s="resolved">Resolved</button>
+    <button type="button" data-s="false_alarm">False alarm</button><button type="button" data-s="">All</button>
+  </span>
+  <select id="severity"><option value="">All severities</option><option value="1">High</option><option value="2">Hazard</option><option value="3">Medium</option></select>
+  <select id="code"><option value="">All alert types</option></select>
+  <label class="row muted" style="gap:6px"><input type="checkbox" id="sim" checked> include simulated</label>
+  <span class="muted" id="counts"></span>
+</div>
+<div class="split">
+  <section class="card flush"><div id="list"><div class="empty">Loading…</div></div></section>
+  <aside class="stack sticky">
+    <div id="player"></div>
+    <section class="card" id="detail"><div class="empty">Select an alert.</div></section>
+  </aside>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/pages/alerts.js"></script>{% endblock %}

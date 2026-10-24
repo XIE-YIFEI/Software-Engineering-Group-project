@@ -1,0 +1,118 @@
+# Cameras, sites and the committed demo results the importer loads (python -m webapp.importer --demo).
+# Paths are relative to the repository root. Times are Malaysia time.
+#
+# Notional clocks: the demo footage is public video without a usable recording time, so each demo run gets a
+# NOTIONAL clock (clock_origin = local time of source second 0). The two roadside runs use video_start_time of
+# alpr/config.yaml, which the registry checks were made with; the others are set here. The congestion
+# cameras keep their real on-screen clock.
+
+sites:
+  - {code: kl-road, name: "Kuala Lumpur roads (demo)", kind: road}
+  - {code: demo-condo, name: "Demo condominium", kind: condo}
+  - {code: jb-ciq, name: "Johor Bahru CIQ approach", kind: checkpoint}
+
+cameras:
+  - code: kl-roadside-anpr
+    name: "KL roadside ANPR (demo)"
+    kind: anpr
+    site: kl-road
+    latlon: [3.1390, 101.6869]          # notional position (camera_latlon of the malaysia_road_anpr profile)
+    location_note: "Notional position in Kuala Lumpur (demo)"
+    source_credit: "LILIN CCTV MALAYSIA, INTEL AIDA ANPR TESTING (youtube.com/watch?v=raQOCJ_wzKE)"
+    notional_clock: true
+  - code: guardhouse-gate
+    name: "Guardhouse barrier gate (demo condominium)"
+    kind: gate
+    site: demo-condo
+    location_note: "Entry lane of a building's barrier gate"
+    source_credit: "LEAF SMART COMMUNITY, License plate recognition system for guard house (youtube.com/watch?v=eNIGPl-W2II)"
+    notional_clock: true
+  - code: selayang-lanes
+    name: "Taman Sri Selayang lane camera"
+    kind: lane
+    site: kl-road
+    location_note: "Pedestrian bridge over a 4+4-lane road, Taman Sri Selayang"
+    source_credit: "Streetcctv, Taman Sri Selayang Traffic Flow (youtube.com/watch?v=KGHhxfkqypg)"
+    notional_clock: true
+  - code: jb-ciq-cam02
+    name: "JB CIQ approach, Camera 02"
+    kind: congestion
+    site: jb-ciq
+    location_note: "High-rise view of the elevated approach road to the CIQ (Bangunan Sultan Iskandar)"
+    source_credit: "Live Traffics 2/2, Camera 02 CIQ Traffics @JB (youtube.com/watch?v=uAVdyvglPco)"
+  - code: jb-ciq-ipc
+    name: "JB CIQ approach, IPC camera"
+    kind: congestion
+    site: jb-ciq
+    location_note: "The same approach road seen from another building"
+    source_credit: "Live Traffics, IPC camera (youtube.com/watch?v=uMBo-qx9M2U)"
+  - code: jb-causeway-cam1
+    name: "Causeway approach, Causeway Link view"
+    kind: congestion
+    site: jb-ciq
+    location_note: "Causeway approach (rotating stream, one of four views); not calibrated"
+    source_credit: "Live Traffics 1/2 (youtube.com/watch?v=MjUd_NZOa4U)"
+
+# Committed plate / lane results (alpr pipeline). `evidence`: the JSON of a run made with --evidence (optional,
+# gitignored); its crops and scene frames are attached to the matching rows.
+runs:
+  - code: kl-road-demo-window
+    label: "Roadside demo window (100-130 s)"
+    camera: kl-roadside-anpr
+    results: demo/malaysia_road_anpr_demo_30s.plates.json
+    video: demo/malaysia_road_anpr_demo_30s.mp4
+    clock_origin: "2026-10-14T08:00:00"
+    flow_primary: false                 # the violation-check run covers the same footage, whole clip
+    evidence: outputs/evidence/malaysia_road_anpr/malaysia_road_anpr.plates.json
+    note: "Real footage. The 4 simulated events are synthetic: fictitious plates added to the log, no vehicle in the video."
+  - code: kl-road-violation-check
+    label: "Violation check, whole clip (fictitious plates inserted)"
+    camera: kl-roadside-anpr
+    results: demo/malaysia_road_violations_demo.plates.json
+    video: demo/malaysia_road_violations_demo.mp4
+    clock_origin: "2026-10-14T08:00:00"
+    inserted_plates_from: alpr/simulation.yaml   # swaps[].fake: these plates were digitally inserted
+    evidence: outputs/evidence/malaysia_road_violations/malaysia_road_violations.plates.json
+    note: "Same footage as the demo window. 7 vehicles carry digitally inserted fictitious plates (X-series or malformed); all other plates are real."
+  - code: gate-demo
+    label: "Guardhouse demo (66-96 s)"
+    camera: guardhouse-gate
+    results: demo/malaysia_guardhouse_demo_30s.plates.json
+    video: demo/malaysia_guardhouse_demo_30s.mp4
+    clock_origin: "2026-10-14T07:30:00"
+    evidence: outputs/evidence/malaysia_guardhouse/malaysia_guardhouse.plates.json
+    note: "Real footage. Two simulated arrivals (webapp/seed/demo_lists.yaml) show the teal and red gate cases."
+  - code: selayang-lanes
+    label: "Lane-level flow (120 s)"
+    camera: selayang-lanes
+    results: demo/malaysia_selayang_lanes_demo.plates.json
+    video: demo/malaysia_selayang_lanes_demo.mp4
+    clock_origin: "2026-10-14T08:30:00"
+    note: "Real flow. Violations are shown only for synthetic (purple) vehicles; real vehicles' violations are withheld."
+
+# Congestion series (alpr/congestion.py --series) and the committed forecast.
+series:
+  - code: jb_ciq_cam02_2023-03-22
+    camera: jb-ciq-cam02
+    label: "Wed 22 Mar 2023 (camera A)"
+    csv: docs/data/causeway/jb_ciq_cam02_2023-03-22.csv
+    calibration: docs/data/causeway/jb_ciq_cam02_2023-03-22.calibration.json
+    video: demo/jb_ciq_forecast_timelapse.mp4
+    video_window: ["05:30", "09:50"]    # forecast_demo.py --from / --to
+    train_on: jb_ciq_ipc_2023-03-21
+  - code: jb_ciq_ipc_2023-03-21
+    camera: jb-ciq-ipc
+    label: "Tue 21 Mar 2023 (camera C)"
+    csv: docs/data/causeway/jb_ciq_ipc_2023-03-21.csv
+    calibration: docs/data/causeway/jb_ciq_ipc_2023-03-21.calibration.json
+    train_on: jb_ciq_cam02_2023-03-22
+  - code: jb_causeway_cam1_2024-01-12
+    camera: jb-causeway-cam1
+    label: "Fri 12 Jan 2024 (camera B, not calibrated)"
+    csv: docs/data/causeway/jb_causeway_cam1_2024-01-12.csv
+
+forecasts:
+  - {series: jb_ciq_cam02_2023-03-22, entity: "To CIQ", file: demo/jb_ciq_forecast_timelapse.forecast.json}
+# Other sections (the zones TC1-TC4, and day C) are computed at import with alpr.forecast.LightGBMForecaster, the
+# recipe of alpr/forecast_demo.py (trained on the other day, pooled over its zones).
+computed_forecast_sections: ["To CIQ", TC1, TC2, TC3, TC4]

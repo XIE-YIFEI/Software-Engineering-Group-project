@@ -101,6 +101,7 @@ class TrackState:
     best_read_w: int = 0            # widest plate crop OCR'd so far (px)
     best_crop: Optional[np.ndarray] = None
     best_crop_q: float = -1.0
+    best_scene: Optional[Dict] = None   # evidence_dir: the frame of best_crop (JPEG bytes) + its boxes and frame number
     colour_votes: Dict[str, int] = field(default_factory=lambda: defaultdict(int))   # registry_check_colour
 
     @property
@@ -128,6 +129,7 @@ class LogEntry:
     last_frame: int
     track_ids: Set[int] = field(default_factory=set)
     crop: Optional[np.ndarray] = None
+    scene: Optional[Dict] = None                   # evidence_dir: the frame `crop` was cut from (TrackState.best_scene)
     colour: str = ""
     alerts: List[Alert] = field(default_factory=list)
     apart: Set[int] = field(default_factory=set)   # tracks seen in view at the same time: other vehicles
@@ -380,6 +382,10 @@ class AlprPipeline:
         q = assess(crop, cfg.min_plate_w_px, cfg.min_plate_h_px, cfg.min_sharpness, cfg.sharp_ref)
         if q.score > st.best_crop_q:
             st.best_crop, st.best_crop_q = crop.copy(), q.score
+            if cfg.evidence_dir:            # kept JPEG-encoded: one full frame per track would not fit in memory
+                st.best_scene = {"jpg": cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 92])[1].tobytes(),
+                                 "frame": idx, "vehicle_box": [int(c) for c in v["box"]],
+                                 "plate_box": [int(vx1 + px1), int(vy1 + py1), int(vx1 + px2), int(vy1 + py2)]}
 
         pw = px2 - px1
         if self._wants_read(st, q, pw):
@@ -462,7 +468,7 @@ class AlprPipeline:
             mine.region = parse.region if parse and result.valid else ""      # no state for an illegal plate
             mine.colour = st.colour
             if st.best_crop is not None:
-                mine.crop = st.best_crop
+                mine.crop, mine.scene = st.best_crop, st.best_scene
         self._check(mine)
 
     def _in_view_apart(self, entry: LogEntry, tid: int, boxes: Dict[int, List[int]], idx: int) -> bool:
@@ -677,6 +683,23 @@ class AlprPipeline:
                  "alerts": [a.to_dict() for a in e.alerts]}
                 for e in sorted((e for e in self.log if e.simulated), key=lambda e: e.first_frame)]
 
+    def write_evidence(self, rows: List[Dict], out_dir: str, start_frame: int = 0) -> None:
+        """evidence_dir: save each plate-log entry's best plate crop and the full frame it came from to `out_dir`
+        and add their paths (+ frame number, time, vehicle and plate boxes in that frame) to its row of
+        `summary()` as `evidence`. Rows whose vehicle never had a sharp enough crop get no `evidence`."""
+        os.makedirs(out_dir, exist_ok=True)
+        entries = sorted((e for e in self.log if not e.simulated), key=lambda e: e.first_frame)
+        for i, (e, row) in enumerate(zip(entries, rows), 1):
+            if e.crop is None or e.scene is None:
+                continue
+            stem = os.path.join(out_dir, f"{i:03d}_{e.result.compact}").replace("\\", "/")
+            cv2.imwrite(stem + "_crop.jpg", e.crop, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            with open(stem + "_scene.jpg", "wb") as f:
+                f.write(e.scene["jpg"])
+            row["evidence"] = {"crop": stem + "_crop.jpg", "scene": stem + "_scene.jpg", "frame": e.scene["frame"],
+                               "time_sec": round((start_frame + e.scene["frame"]) / self.fps, 2),
+                               "vehicle_box": e.scene["vehicle_box"], "plate_box": e.scene["plate_box"]}
+
 
 def _same_plate(a: str, b: str) -> bool:
     """Two readings of one vehicle: identical, or a near-miss (<=2 edits, <=1 for short plates) - two
@@ -849,6 +872,8 @@ def run(cfg: AlprConfig) -> int:
 
     start = int(cfg.start_sec * fps)                           # in processed frames
     rows = pipe.summary(start)
+    if cfg.evidence_dir:
+        pipe.write_evidence(rows, cfg.evidence_dir, start)
     report = {"source": cfg.source, "profile": cfg.profile, "fps": fps, "frames": n,
               "window_sec": [cfg.start_sec, round(cfg.start_sec + n / fps, 2)], "plates": rows,
               "processing": {"model_backend": "openvino" if pipe._vehicle_args else "pt",

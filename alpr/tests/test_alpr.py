@@ -1188,6 +1188,30 @@ def test_rule_params_take_smoothing_and_speed_window_from_the_config():
     assert (d.smooth_sec, d.speed_window_sec) == (RuleParams().smooth_sec, RuleParams().speed_window_sec)
 
 
+def test_evidence_output_saves_crop_and_frame_and_changes_no_other_field():
+    import json
+    import tempfile
+    from alpr.pipeline import LogEntry
+    assert AlprConfig().evidence_dir == ""                   # off by default: the results JSON is unchanged
+    p = _bare_pipeline()
+    crop = np.full((20, 60, 3), 200, np.uint8)
+    scene = cv2.imencode(".jpg", np.zeros((90, 160, 3), np.uint8))[1].tobytes()
+    a = LogEntry(PlateResult("WA 1234 B", "WA1234B", 0.95, 10, CONFIRMED), "Car", "", 5, 40, {1}, crop=crop,
+                 scene={"jpg": scene, "frame": 12, "vehicle_box": [1, 2, 50, 60], "plate_box": [10, 30, 40, 40]})
+    b = LogEntry(PlateResult("WB 7605 J", "WB7605J", 0.9, 8, CONFIRMED), "Car", "", 50, 60, {2})   # no sharp crop yet
+    p.log = [a, b]
+    rows = p.summary()
+    before = json.loads(json.dumps(rows))
+    with tempfile.TemporaryDirectory() as d:
+        p.write_evidence(rows, d)
+        ev = rows[0]["evidence"]
+        assert os.path.exists(ev["crop"]) and os.path.exists(ev["scene"])
+        assert (ev["frame"], ev["time_sec"], ev["plate_box"]) == (12, round(12 / 30.0, 2), [10, 30, 40, 40])
+        assert cv2.imread(ev["crop"]).shape == crop.shape
+    assert "evidence" not in rows[1]
+    assert {k: v for k, v in rows[0].items() if k != "evidence"} == before[0] and rows[1] == before[1]
+
+
 def test_requirements_cover_every_third_party_import():
     import glob
     import re

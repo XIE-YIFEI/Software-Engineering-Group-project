@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stack">
+  <div class="row"><label class="field" style="flex-direction:row;align-items:center;gap:8px">Camera and run <select id="run"></select></label></div>
+  <div class="grid g4" id="kpis"></div>
+  <div class="split">
+    <div class="stack">
+      <section class="card"><div class="row between"><h2>Flow per 10 s by vehicle type</h2>
+        <span class="row"><select id="bin"><option value="10">10 s</option><option value="30">30 s</option><option value="60">60 s</option></select>
+        <select id="export"><option value="">Export CSV…</option><option value="crossings">Crossings</option><option value="lane_bins">Per-lane 10 s series</option><option value="lanes">Per-lane totals</option><option value="flow_bins">Counting-line 10 s bins</option><option value="events">Lane events</option></select></span></div>
+        <div id="flow"></div></section>
+      <section class="card" id="lanecard"><div class="row between"><h2>Per-lane metric over time</h2>
+        <select id="metric"><option value="occupancy">Occupancy</option><option value="density">Density (veh/km)</option><option value="speed">Mean speed (km/h)</option><option value="flow">Flow (veh/min)</option></select></div>
+        <div id="lanecharts" class="grid g2"></div></section>
+    </div>
+    <div class="stack">
+      <div id="player"></div>
+      <section class="card" id="lanes"><h2>Per lane</h2></section>
+      <section class="card" id="events"><h2>Lane events</h2></section>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/pages/traffic.js"></script>{% endblock %}

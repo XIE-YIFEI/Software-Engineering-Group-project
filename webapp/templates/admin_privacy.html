@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stack" id="privacy" data-admin="privacy">
+  <section class="card"><div class="row between"><h2>Retention</h2><span class="row"><button class="btn" id="preview">Preview purge</button><button class="btn danger" id="purge">Purge now</button></span></div>
+    <p class="muted" style="margin:0">Following the data-minimisation principle of Malaysia's PDPA 2010: ordinary sightings are kept only for the set period, sightings
+      with alerts until the alerts are closed plus their own period. A purge also runs every day. Periods are set under Settings.</p>
+    <div id="purgeout" style="margin-top:10px"></div></section>
+  <section class="card"><div class="row between"><h2>Audit log</h2>
+    <form id="af" class="row"><input name="username" placeholder="user" style="width:120px"><input name="action" placeholder="action, e.g. reveal" style="width:160px">
+      <input name="start" type="date"><input name="end" type="date"><button class="btn" type="submit">Filter</button></form>
+    <button class="btn" id="verify">Verify hash chain</button></div>
+    <div id="verifyout"></div><div id="audit" class="scroll" style="max-height:520px"></div></section>
+  <section class="card"><h2>OCR correction pool</h2><div id="corr"></div></section>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/pages/admin.js"></script>{% endblock %}

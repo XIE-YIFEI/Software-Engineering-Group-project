@@ -4,7 +4,8 @@
 
 This project targets **Malaysian licence plates**: still-image recognition; vehicle tracking, plate reading and traffic
 counting in CCTV video; lane-level flow and dangerous-driving detection (section 5); peak-congestion forecasting on the
-approach to the Johor Bahru checkpoint (section 10); and the speed-up (section 11).
+approach to the Johor Bahru checkpoint (section 10); the speed-up (section 11); and the web system built on these
+results (section 13).
 Every accuracy figure was measured on Malaysian data whose **plate text was checked by hand, plate by plate** (see
 "Evaluation method" below).
 
@@ -25,7 +26,7 @@ python -m venv .venv
 ```
 
 Then run every command with `.venv\Scripts\python` (or run `.venv\Scripts\activate` once and use plain `python`).
-`requirements.txt` pins `numpy<2`. In this venv all unit tests pass (now 85) and `malaysia_road_anpr` reproduces the committed
+`requirements.txt` pins `numpy<2`. In this venv all unit tests pass (now 86) and `malaysia_road_anpr` reproduces the committed
 JSON field by field (tested with torch 2.3.1+cpu, ultralytics 8.4.171, numpy 1.26.4, opencv-python 4.11.0.86).
 
 - Plate OCR uses `fast-plate-ocr` (its ~10 MB model downloads automatically on first run).
@@ -930,3 +931,86 @@ by field, to the committed ones; in the forecasting evaluation the predictions o
 day: the GRU is unstable anyway): on test day C its 15-minute error is 0.078 (before 0.076), still the best in that column;
 on test day A the 30-minute error is 0.080 (before 0.087); on test day C the 5-minute error is 0.075 (before 0.053), and
 LightGBM is now the best there. The tables and findings of section 10.5 use the new numbers; the findings are unchanged.
+
+## 13. Web system (2026-10-24)
+
+The recognition results of the sections above, turned into a web system people can log in to: a database, an API,
+pages for four roles, a background worker for uploads, and CI. The full documents, in English and Chinese, are in
+[docs/system/](docs/system/README.md): requirements specification, architecture, database, API, test plan and report,
+and a demo walkthrough with screenshots.
+
+### 13.1 Running it
+
+```bash
+.venv\Scripts\python -m webapp.importer --demo --demo-users
+```
+
+```bash
+.venv\Scripts\python -m webapp
+```
+
+Open <http://127.0.0.1:8000> (API reference at `/docs`). The passwords of the four demo accounts (`police1`,
+`guard1`, `traffic1`, `admin1`) are in `webapp/seed/demo_users.yaml`, for the local demo only; deactivate them on the
+Users page before other computers may connect. The import can be re-run; to start from scratch, delete `data/web/` and
+import again. The database, uploads and exports live in `data/web/`, which is not in git. Tests:
+`python webapp/tests/test_web.py`.
+
+### 13.2 What each role can do
+
+| Role | Main features |
+|---|---|
+| Traffic police / JPJ (`police`) | overview; fuzzy plate search (tolerant of look-alike characters such as O/0 and B/8; clicking a record plays the video from 1 s before it); alert centre (sorted by severity; acknowledge / resolve / false-alarm workflow; a false alarm can carry the correct plate for the correction pool); cross-camera timeline (impossible travel -> cloned plate?); evidence pack (HTML / PDF); watch list and blacklist; traffic analytics and congestion forecast (read only); upload & analyse; reports |
+| Guardhouse security (`guard`) | guardhouse mode (green resident, teal valid pass, yellow unregistered, red banned; one press to allow, or stop with a note); time-bounded visitor passes and the overstay list; access log; residents and the site's ban list; the gate's alerts; reports |
+| Traffic management (`traffic`) | traffic analytics (flow by vehicle type / lane / time; per-lane occupancy, density, speed ± error; lane events); congestion forecast (+5 / +15 / +30 min, warning, forecast vs actual); the "open more lanes" what-if; plate search with masked plates; upload & analyse; reports |
+| Administrator (`admin`) | users, data status, settings; privacy and audit (retention preview and purge, the audit log with its hash-chain check, the correction pool); the other pages read only, plates masked |
+
+### 13.3 Code structure and how to extend it
+
+`webapp/` is layered: `db.py` (data access) -> `services/` (the logic: typed functions; role checks, masking and the
+audit log all happen here) -> `api/` (thin FastAPI routers) and `web/pages.py` + `templates/` + `static/` (the pages).
+To add a feature: write the function in `services/` -> add a route in `api/` -> add the page in `templates/` and
+`static/js/pages/` -> add a test to `webapp/tests/test_web.py`. The next task's AI assistant calls the functions in
+`services/` directly (see the [API document](docs/system/API_EN.md), section 4) and inherits the same permissions,
+masking and audit.
+
+### 13.4 Change to the recognition code
+
+One option, off by default: `run_alpr.py --evidence DIR` (config `evidence_dir`). It saves each plate-log entry's best
+plate crop and the full frame it came from and adds an `evidence` field to each row of the results JSON; the evidence
+pack uses it. The four demo profiles were run with and without the option: every existing field is identical to the
+committed results ([test report](docs/system/TEST_PLAN_REPORT_EN.md), section 5). One new unit test: 86 in all, all
+passing.
+
+### 13.5 Data: what is real and what is simulated
+
+- Plates, traffic flow and congestion measurements: real public footage.
+- Violators: fictitious X-series plates (inserted into the video or fully synthetic); real vehicles' violations are
+  counted, never shown.
+- The vehicle registry, the cross-camera sighting (`XSD 4004` at Johor Bahru), the gate lists and passes: simulated,
+  marked on every page with a purple "Simulated" pill.
+- The demo footage has no recording time, so it uses a notional clock (2026-10-14); the CIQ congestion data use the
+  real on-screen clock.
+
+### 13.6 Privacy
+
+- Traffic managers and admins see masked plates (`VJF ****`), crops blurred on the server, and no video of plate
+  cameras; "Show full plate" needs a reason, is logged and lasts 15 minutes.
+- Every search needs a purpose; searches, views, reveals and exports go into an append-only, hash-chained audit log.
+- Ordinary sightings are deleted after 30 days (never while an alert is open), the access log after 90 days, the audit
+  log after 365 days (the admin can change these).
+- Wording: the controls follow the data-minimisation principle of Malaysia's PDPA 2010; the PDPA does not apply to the
+  Federal and State Governments, so we do not claim that police use is bound by it.
+
+### 13.7 CI and dependencies
+
+`.github/workflows/ci.yml`: on every push and pull request, Ubuntu + Python 3.12 installs CPU torch and
+`requirements-ci.txt` (pinned versions) and runs the 86 `alpr` tests and the 22 web tests; the CI badge is at the top
+of the README. The web system's packages (fastapi, pydantic, uvicorn, jinja2, python-multipart, httpx, fpdf2) are in
+`requirements.txt`.
+
+### 13.8 Limitations
+
+The registry is simulated; CPU-only analysis runs at about 10 FPS; violations are demonstrated with fictitious plates
+only; the what-if is an estimate under stated assumptions; the evidence pack is not an official document; local
+deployment (SQLite, 127.0.0.1); Linux is tested in CI only. Details: [requirements](docs/system/REQUIREMENTS_EN.md),
+section 8, and the [test report](docs/system/TEST_PLAN_REPORT_EN.md), section 11.

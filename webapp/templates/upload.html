@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stack">
+  <form id="up" class="card">
+    <div class="row" style="align-items:flex-end">
+      <label class="field">Image or video<input name="file" type="file" accept=".jpg,.jpeg,.png,.bmp,.webp,.mp4,.avi,.mov,.mkv,.m4v" required></label>
+      <label class="field">Camera<select name="camera_id" required></select></label>
+      <label class="field">Scene<select name="scene"></select></label>
+      <label class="field">Recorded at<input name="recorded_at" type="datetime-local" step="1"></label>
+      <label class="row muted" style="gap:6px"><input name="render_video" type="checkbox"> also render the annotated video (about 3× slower)</label>
+      <button class="btn primary" type="submit">Start analysis</button>
+    </div>
+    <p class="faint" style="font-size:12px;margin:10px 0 0">Videos run <code>run_alpr.py --headless --backend openvino</code> (about 10 FPS on this CPU), images <code>run_image.py</code>,
+      in the background. Registry checks on uploads use only ILLEGAL_FORMAT and DUPLICATE: the registry is SIMULATED, so a real plate
+      "not in the registry" says nothing about the vehicle. The watch list and blacklist still apply. Uploads stay on this computer (<code>data/web/uploads</code>).</p>
+  </form>
+  <section class="card"><h2>Jobs</h2><div id="jobs"><div class="empty">Loading…</div></div></section>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/pages/upload.js"></script>{% endblock %}

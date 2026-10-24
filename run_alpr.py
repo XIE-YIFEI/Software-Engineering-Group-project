@@ -6,6 +6,7 @@
     python run_alpr.py --profile dashcam --source other.mp4 --out outputs/other.mp4
     python run_alpr.py --profile malaysia_road_anpr          # CCTV dashboard demo (30 s)
     python run_alpr.py --profile malaysia_road_anpr --backend openvino --headless   # fast, JSON only
+    python run_alpr.py --profile malaysia_road_violations --evidence outputs/evidence/v   # + plate crops, frames
 
 Profiles and every threshold live in alpr/config.yaml. Writes the annotated video and a
 `<out>.plates.json` (one row per vehicle + traffic-flow counts) for `python -m alpr.evaluate`.
@@ -35,11 +36,13 @@ def main(argv=None) -> int:
     ap.add_argument("--headless", action="store_true", default=None, help="no rendering / video, JSON only")
     ap.add_argument("--no-plates", dest="read_plates", action="store_false", default=None,
                     help="vehicles, flow and lanes only (no plate detection / OCR)")
+    ap.add_argument("--evidence", dest="evidence_dir", metavar="DIR",
+                    help="save each logged plate's best crop + its full frame to DIR (paths in the JSON)")
     args = ap.parse_args(argv)
 
     cfg = load_config(args.profile, args.config)
     for name in ("source", "start_sec", "duration", "out", "plate_model", "plate_model_fallback", "frame_step",
-                 "model_backend", "openvino_device", "headless", "read_plates"):
+                 "model_backend", "openvino_device", "headless", "read_plates", "evidence_dir"):
         value = getattr(args, name)
         if value is not None:
             setattr(cfg, name, value)

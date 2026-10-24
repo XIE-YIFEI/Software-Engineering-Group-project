@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stack">
+  <section><h3>Cameras</h3><div id="cameras" class="grid g4"></div></section>
+  <div class="grid g2">
+    <section class="card" id="flow"><h2>Flow</h2><div class="empty">Loading…</div></section>
+    <section class="card" id="alerts"><h2>Open alerts</h2><div class="empty">Loading…</div></section>
+  </div>
+  <section class="card" id="congestion"><h2>Congestion</h2><div class="empty">Loading…</div></section>
+  <section class="card" id="system" style="display:none"><h2>System</h2></section>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/pages/overview.js"></script>{% endblock %}

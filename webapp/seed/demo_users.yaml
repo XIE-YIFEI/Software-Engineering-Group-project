@@ -1,0 +1,8 @@
+# Test accounts for the LOCAL course demo only (python -m webapp.importer --demo --demo-users).
+# The server listens on 127.0.0.1 by default; never use these accounts on a server other people can reach.
+# Passwords are stored in the database as scrypt hashes; this file is the only plain-text copy.
+users:
+  - {username: police1, display_name: "Police officer (demo)", role: police, password: "nasi-teh-pandan-271"}
+  - {username: guard1, display_name: "Guard (demo)", role: guard, site: demo-condo, password: "roti-cendol-cendol-239"}
+  - {username: traffic1, display_name: "Traffic manager (demo)", role: traffic, password: "pandan-satay-rambutan-412"}
+  - {username: admin1, display_name: "Administrator (demo)", role: admin, password: "teh-roti-roti-157"}
