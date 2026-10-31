@@ -31,6 +31,7 @@ class AlprConfig:
     read_plates: bool = True           # False = vehicles, flow and lanes only (no plate detection / OCR)
     evidence_dir: str = ""             # "" = off. A folder: each plate-log entry's best plate crop and the full frame
                                        # it came from are saved there, their paths go into the JSON (`evidence`)
+    uncertain_dir: str = ""            # optional local FR03 diagnostic output for unconfirmed tracks
 
     vehicle_model: str = "yolov8s.pt"
     plate_model: str = "models/plate_malaysia.pt"

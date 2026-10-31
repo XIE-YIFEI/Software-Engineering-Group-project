@@ -872,6 +872,11 @@ def run(cfg: AlprConfig) -> int:
 
     start = int(cfg.start_sec * fps)                           # in processed frames
     rows = pipe.summary(start)
+    if cfg.uncertain_dir:
+        from .diagnostics import write_uncertain_diagnostics
+        diagnostic_path = write_uncertain_diagnostics(pipe.states, pipe.voter, pipe.log,
+                                                      cfg.uncertain_dir, start_frame=start, fps=fps)
+        print(f"  FR03 uncertain diagnostics -> {diagnostic_path}")
     if cfg.evidence_dir:
         pipe.write_evidence(rows, cfg.evidence_dir, start)
     report = {"source": cfg.source, "profile": cfg.profile, "fps": fps, "frames": n,
