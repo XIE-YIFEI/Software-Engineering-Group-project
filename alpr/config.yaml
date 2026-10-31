@@ -1,0 +1,370 @@
+# ALPR settings. `common` applies to every profile; a profile overrides it.
+# Pixel positions are fractions of the frame (0..1) so the same profile works at 720p / 1080p / 4K.
+# Run:  python run_alpr.py --profile dashcam      (or cctv)
+#       python run_image.py --source photo.jpg   (profile: image)
+common:
+  vehicle_model: yolov8s.pt
+  plate_model: models/plate_malaysia.pt   # fine-tuned on the Malaysian Car Plate Dataset (two-row plates too);
+                                         # models/finetuned.pt = the earlier model trained on Indian plates
+  imgsz: 640
+  vehicle_classes: [2, 3, 5, 7]      # COCO: car, motorcycle, bus, truck
+  vehicle_conf: 0.35                 # a track is shown once its best detection reaches this
+  track_conf: 0.10                   # boxes handed to ByteTrack (its low-score stage needs them)
+  heavy_vehicle_conf: 0.55           # bus/truck: stricter, roadside LED billboards look like box trucks
+  min_ground_y_frac: 0.0             # ignore vehicles whose bottom edge is above this (signs, overpasses)
+  ignore_zones: []                   # [x1, y1, x2, y2] fractions; detections centred inside are dropped (watermarks)
+
+  # which vehicles are close enough for plate reading
+  min_vehicle_w_frac: 0.078
+  min_vehicle_h_frac: 0.074
+
+  # plate detection (every N frames per track; the box is carried along with the vehicle in between)
+  plate_conf: 0.30
+  plate_imgsz: 480
+  plate_aspect_min: 0.8             # two-row plates (pickups, SUVs, trucks, motorcycles) are almost square
+  plate_aspect_max: 6.0
+  min_plate_w_px: 28
+  min_plate_h_px: 10
+  max_plate_w_frac: 0.50
+  max_plate_h_frac: 0.30
+  plate_det_interval: 2
+  plate_ttl_frames: 15
+
+  # OCR + voting
+  ocr_backend: fast_plate_ocr        # plate-specific OCR; "easyocr" = generic fallback (much less accurate)
+  ocr_model: cct-s-v2-global-model
+  ocr_max_readings: 15               # budget for low-res reads per track; full-res plates (>= ocr_ref_plate_w)
+                                     # are always read, and reads continue while the plate keeps growing
+  ocr_ref_plate_w: 100               # votes are weighted by min(1, plate_width / this)^2: far plates misread
+  min_sharpness: 30.0                # Laplacian variance on a 128px-wide crop
+  sharp_ref: 300.0
+  max_plate_corrections: 1
+  resolve_ligatures: false          # W <-> VJ fix for EasyOCR misreads; not needed with fast_plate_ocr
+  min_votes: 3
+  confirm_conf: 0.6
+
+  merge_gap_sec: 10.0                # same / near-identical plate on two tracks within 10 s = one vehicle
+  log_min_status: CONFIRMED          # vehicles enter the plate log / results.json once CONFIRMED
+                                     # (TENTATIVE readings still show, in amber, on the live vehicle label)
+  count_line_y: 0.0                  # traffic-flow counting line, fraction of frame height (0 = off)
+
+  # Plate verification (alpr/registry.py). The registry is SIMULATED: fictitious X-plates plus neutral
+  # placeholders (no alerts possible) for every real plate in alpr/gt. Build/rebuild it with
+  #   python -m alpr.registry --make-demo        (also built automatically when the file is missing)
+  registry_enabled: false
+  registry_path: data/registry/demo_registry.db
+  registry_rules: [UNMATCHED, EXPIRED, ILLEGAL_FORMAT, BLACKLIST, TYPE_MISMATCH, DUPLICATE]
+  registry_check_colour: false       # TYPE_MISMATCH also compares a rough HSV body colour (off: lighting-sensitive)
+  registry_max_speed_kmh: 250        # DUPLICATE: same plate at two cameras needing a faster trip = cloned plate
+  registry_misread_tolerance: true   # one character off a registered plate = probable OCR misread, no UNMATCHED
+                                     # (seen on the demo: VCH 1587 briefly confirmed as VCR 1587)
+
+  # HUD: "lead" = AR card on the main target (dashcam); "dashboard" = CCTV layout with plate log
+  hud_mode: lead
+  # HUD lead target
+  lane_weight: 0.6
+  lead_hysteresis: 1.25
+  min_lead_w_frac: 0.104
+  hud_title: "SECS Vision · Malaysia ALPR"
+
+profiles:
+  # Static images (python run_image.py / python -m alpr.eval_images). The plate detector runs on the
+  # whole image, not on vehicle crops, so it needs a larger input size than the video profiles.
+  image:
+    source: ../Malaysian Car Plate Dataset/val/images
+    out: outputs/images_alpr
+    plate_conf: 0.25
+    plate_imgsz: 640
+    plate_aspect_min: 0.7            # two-row plates (SUVs, motorcycles) are almost square
+    plate_aspect_max: 7.0
+    min_plate_w_px: 16
+    min_plate_h_px: 8
+    ocr_tta: false                   # multi-margin OCR averaging: no gain on the val set, 3x OCR cost
+
+  dashcam:
+    source: data/videos/malaysia_kl_traffic.mp4
+    start_sec: 49.0
+    duration: 10.0
+    out: outputs/malaysia_tracked_hud_10s.mp4
+    min_ground_y_frac: 0.59
+    ignore_zones: [[0.0, 0.82, 0.26, 1.0]]   # channel watermark, bottom-left of this clip
+    hud_title: "SECS Vision · Malaysia ALPR"
+
+  # Roadside ANPR camera, Malaysia (LILIN "INTEL AIDA ANPR TESTING", youtube.com/watch?v=raQOCJ_wzKE).
+  # The clip is a screen recording of the vendor's NVR UI: frame_crop keeps only the camera image and
+  # drops the vendor's own plate list (right) and ROI outline. 100-130 s is the busiest 30 s.
+  malaysia_road_anpr:
+    source: data/videos/malaysia_lilin_anpr_road.mp4
+    start_sec: 100.0
+    duration: 30.0
+    out: outputs/malaysia_road_anpr_30s.mp4
+    frame_crop: [0.0156, 0.0741, 0.7943, 0.9491]
+    count_line_y: 0.62
+    min_votes: 6                       # 30 FPS, a read every 2nd frame: confirm after ~0.4 s of readings
+    hud_mode: dashboard
+    hud_title: "SECS Vision · Malaysia Roadside ANPR"
+    registry_enabled: true
+    video_start_time: "2026-10-14T08:00:00"   # notional clock for the demo (road-tax / travel checks)
+    camera_name: "KL roadside ANPR (demo)"
+    camera_latlon: [3.1390, 101.6869]
+    # SIMULATED events: fictitious plates (X-series, see alpr/registry.py DEMO_SCENARIOS) added to the
+    # plate log at these video seconds to demonstrate the alerts. They are marked SIMULATED on the
+    # dashboard and kept apart from the camera's plates in *.plates.json. Real vehicles are never flagged.
+    registry_sim_events:
+      - {at_sec: 103.0, plate: XSB2002, vtype: Car}      # BLACKLIST (reported stolen)
+      - {at_sec: 110.0, plate: XSA1001, vtype: Car}      # EXPIRED road tax + TYPE_MISMATCH (registered motorcycle)
+      - {at_sec: 117.0, plate: XSE5005, vtype: Car}      # UNMATCHED (no record)
+      - {at_sec: 124.0, plate: XSD4004, vtype: Car}      # DUPLICATE (seen in Johor Bahru 17 min earlier)
+
+  # Violation demo: the whole roadside clip (155 s) with SIMULATED violations ON actual vehicles.
+  # data/videos/malaysia_road_violations_SIMULATED.mp4 is made by `python -m alpr.simulate`
+  # (alpr/simulation.yaml): 7 vehicles carry digitally inserted fictitious plates (X-series or
+  # malformed), every other plate is real. The pipeline does not know which ones were altered.
+  malaysia_road_violations:
+    source: data/videos/malaysia_road_violations_SIMULATED.mp4
+    start_sec: 0.0
+    duration: 0.0
+    out: outputs/malaysia_road_violations.mp4
+    count_line_y: 0.62
+    min_votes: 6
+    hud_mode: dashboard
+    hud_title: "SECS Vision · Malaysia Roadside ANPR · Violation Check"
+    hud_banner: "Simulation · 7 vehicles carry digitally inserted fictitious plates (X-series or malformed). All other plates are real."
+    summary_sec: 8.0
+    registry_enabled: true
+    video_start_time: "2026-10-14T08:00:00"
+    camera_name: "KL roadside ANPR (demo)"
+    camera_latlon: [3.1390, 101.6869]
+
+  # Second scene: guardhouse barrier gate (YouTube "License plate recognition system for guard house",
+  # LEAF SMART COMMUNITY, youtube.com/watch?v=eNIGPl-W2II). Same model and thresholds as
+  # malaysia_road_anpr; only the scene geometry differs. frame_crop drops the top strip with the
+  # vendor's own plate overlay and logos. Registry checks stay off: every vehicle here is real.
+  malaysia_guardhouse:
+    source: data/videos/malaysia_guardhouse_lpr.mp4
+    start_sec: 66.0
+    duration: 30.0
+    out: outputs/malaysia_guardhouse_30s.mp4
+    frame_crop: [0.0, 0.145, 1.0, 1.0]
+    count_line_y: 0.72                 # vehicles leaving through the gate cross it
+    min_votes: 6
+    hud_mode: dashboard
+    hud_title: "SECS Vision · Malaysia Guardhouse Gate LPR"
+
+  # Lane-level traffic flow + driving behaviour, fixed elevated camera (pedestrian bridge) over a
+  # 4+4-lane urban highway at Taman Sri Selayang, Kuala Lumpur (YouTube "Taman Sri Selayang Traffic
+  # Flow | Kuala Lumpur Morning || 4K", Streetcctv, youtube.com/watch?v=KGHhxfkqypg, 15:00-17:00,
+  # 1080p60). Inbound (towards the camera, right) flows freely; outbound (left) is queued.
+  # Lanes are numbered from the median (1 = fast lane). Out4 includes the exit lane to the slip road
+  # (no lane line at the count line). Lane lines, vanishing point and calibration were measured on
+  # the empty-road median image (python -m alpr.lane_tool --profile malaysia_selayang_lanes --show x.jpg).
+  malaysia_selayang_lanes:
+    source: data/videos/malaysia_selayang_overhead.mp4
+    start_sec: 0.0
+    duration: 0.0
+    frame_step: 2                      # 60 FPS -> 30 FPS
+    imgsz: 1280                        # motorcycles at the count line are ~25 px wide (960: 5/19 counted)
+    tracker: alpr/trackers/bytetrack_small.yaml
+    out: outputs/malaysia_selayang_lanes.mp4
+    ignore_zones: [[0.42, 0.95, 0.58, 1.0]]   # channel watermark, bottom centre
+    count_line_y: 0.78
+    min_votes: 6
+    hud_mode: dashboard
+    hud_title: "SECS Vision · Lane-level Traffic Flow · Taman Sri Selayang, Kuala Lumpur"
+    hud_banner: "Simulation · purple vehicles are synthetic (not in the camera image) and demonstrate the rules"
+    summary_sec: 8.0
+    lane_vanishing_point: [0.5026, 0.5352]
+    lane_ref_shift: 0.3                # fitted on the first 40 s only (lane bands centred); see lanes.LaneMap
+    speed_zone_y: [0.66, 0.92]         # inside the calibrated stretch, boxes not cut by the frame edge
+    lane_margin: 0.04                  # cars leave the frame soon after a late lane change (bottom of the view)
+    speed_limit_kmh: 80.0              # assumed for the demo (urban highway)
+    tailgate_headway_sec: 0.8
+    tailgate_min_kmh: 50.0
+    lanes:
+      - {name: In1, group: Inbound, direction: down,
+         polygon: [[0.5053, 0.7037], [0.5044, 0.7407], [0.5038, 0.7796], [0.5029, 0.8796], [0.5034, 0.9954], [0.6107, 0.9954], [0.5853, 0.8796], [0.5616, 0.7796], [0.5520, 0.7407], [0.5425, 0.7037]]}
+      - {name: In2, group: Inbound, direction: down,
+         polygon: [[0.5425, 0.7037], [0.5520, 0.7407], [0.5616, 0.7796], [0.5853, 0.8796], [0.6107, 0.9954], [0.7138, 0.9954], [0.6572, 0.8796], [0.6121, 0.7796], [0.5955, 0.7407], [0.5802, 0.7037]]}
+      - {name: In3, group: Inbound, direction: down,
+         polygon: [[0.5802, 0.7037], [0.5955, 0.7407], [0.6121, 0.7796], [0.6572, 0.8796], [0.7138, 0.9954], [0.8101, 0.9954], [0.7299, 0.8796], [0.6634, 0.7796], [0.6383, 0.7407], [0.6147, 0.7037]]}
+      - {name: In4, group: Inbound, direction: down,
+         polygon: [[0.6147, 0.7037], [0.6383, 0.7407], [0.6634, 0.7796], [0.7299, 0.8796], [0.8101, 0.9954], [0.9038, 0.9954], [0.8024, 0.8796], [0.7179, 0.7796], [0.6859, 0.7407], [0.6559, 0.7037]]}
+      - {name: Out1, group: Outbound, direction: up,
+         polygon: [[0.4279, 0.7037], [0.4136, 0.7407], [0.3982, 0.7796], [0.3557, 0.8796], [0.3019, 0.9954], [0.4143, 0.9954], [0.4366, 0.8796], [0.4578, 0.7796], [0.4665, 0.7407], [0.4751, 0.7037]]}
+      - {name: Out2, group: Outbound, direction: up,
+         polygon: [[0.3861, 0.7037], [0.3618, 0.7407], [0.3359, 0.7796], [0.2677, 0.8796], [0.1858, 0.9954], [0.3019, 0.9954], [0.3557, 0.8796], [0.3982, 0.7796], [0.4136, 0.7407], [0.4279, 0.7037]]}
+      - {name: Out3, group: Outbound, direction: up,
+         polygon: [[0.3432, 0.7037], [0.3064, 0.7407], [0.2680, 0.7796], [0.1696, 0.8796], [0.0568, 0.9954], [0.1858, 0.9954], [0.2677, 0.8796], [0.3359, 0.7796], [0.3618, 0.7407], [0.3861, 0.7037]]}
+      - {name: Out4, group: Outbound, direction: up,
+         polygon: [[0.1769, 0.7222], [0.1499, 0.7407], [0.0917, 0.7796], [0.0000, 0.8380], [0.0000, 0.8796], [0.0000, 0.9954], [0.0568, 0.9954], [0.1696, 0.8796], [0.2105, 0.8380], [0.2680, 0.7796], [0.3064, 0.7407], [0.3248, 0.7222]]}
+    solid_lines:
+      - {name: inbound edge (hatched area), points: [[0.6859, 0.7407], [0.7395, 0.8056], [0.8024, 0.8796], [0.9038, 0.9954]]}
+      - {name: inbound median edge, points: [[0.5053, 0.7037], [0.5038, 0.7796], [0.5034, 0.9954]]}
+      - {name: outbound median edge, points: [[0.4751, 0.7037], [0.4578, 0.7796], [0.4143, 0.9954]]}
+    # SIMULATED vehicles (purple, labelled "Simulated", not in the camera image) that demonstrate the
+    # violation rules; fictitious X-series plates. Paths in road metres (see calibration below: x 0 =
+    # line In1|In2, In1 -1.75, In2 1.75, In3 5.25, In4 8.75, edge line ~10.9, hatched area beyond; y = metres
+    # from the camera's near dash, count line at 5.6 m), each placed where its lane has no real traffic.
+    behaviour_sim_tracks:
+      - {plate: XWW 1001, vtype: Car, label: Wrong-way driver, start_sec: 8.0,
+         path: [[0, -1.75, -6.0], [3.5, -1.75, 22.0]]}
+      - {plate: XSP 4004, vtype: Car, label: Speeding (115 km/h), start_sec: 15.5,
+         path: [[0, 1.75, 36.0], [1.35, 1.75, -7.0]]}
+      - {plate: XSL 2002, vtype: Car, label: Cuts across the solid edge line, start_sec: 17.5,
+         path: [[0, 8.75, 30.0], [1.4, 8.75, 12.0], [2.4, 12.2, 2.0], [3.2, 12.6, -6.0]]}
+      - {plate: XST 3003, vtype: Car, label: Stops in a live lane, start_sec: 85.5,
+         path: [[0, 5.25, 34.0], [1.5, 5.25, 12.0], [2.0, 5.25, 10.0], [10.5, 5.25, 10.0], [12.0, 5.25, -6.0]]}
+      - {plate: XTG 5005, vtype: Car, label: Leader (90 km/h), start_sec: 87.0,
+         path: [[0, -1.75, 36.0], [1.7, -1.75, -6.5]]}
+      - {plate: XTG 5006, vtype: Car, label: Tailgater (0.55 s behind), start_sec: 87.55,
+         path: [[0, -1.75, 36.0], [1.7, -1.75, -6.5]]}
+    # Road plane: x across (m, 0 = lane line In1|In2), y along the road (m, away from the camera).
+    # 12 dash far-ends on the three inbound lane lines. Lane width 3.5 m (JKR; the two lines not used
+    # in the fit come out at 3.4-3.5 m). Dash cycle 6.0 m (2 m dash + 4 m gap), measured: the
+    # wheelbases of 5 vehicles (3 parked Proton taxis, 2.465 m; 2 sedans) give 5.9 +- 0.35 m, and the
+    # dash / cycle ratio in the image is 0.34 (2 / 6 = 0.33). The rural 4.5 + 7.5 m pattern would put
+    # free-flow traffic at 135 km/h.
+    calibration:
+      image_points: [[0.5774, 0.8454], [0.5596, 0.7713], [0.5482, 0.7259], [0.5409, 0.6972], [0.6444, 0.8519], [0.6113, 0.7778], [0.5921, 0.7324], [0.5799, 0.7028], [0.7161, 0.8593], [0.6664, 0.7843], [0.6359, 0.7370], [0.6165, 0.7065]]
+      road_points: [[0.0, 0.0], [0.0, 6.0], [0.0, 12.0], [0.0, 18.0], [3.5, 0.0], [3.5, 6.0], [3.5, 12.0], [3.5, 18.0], [7.0, 0.0], [7.0, 6.0], [7.0, 12.0], [7.0, 18.0]]
+      sigma_width_frac: 0.05           # lane width 3.5 +- 0.17 m
+      sigma_length_frac: 0.06          # dash cycle 6.0 +- 0.35 m (spread of the wheelbase measurements)
+      sigma_click_px: 2.0
+
+  malaysia_cctv_urban:
+    source: data/videos/malaysia_kl_city_cctv.mp4
+    start_sec: 0.0
+    duration: 28.0
+    out: outputs/malaysia_cctv_urban_28s.mp4
+    min_ground_y_frac: 0.35
+    min_vehicle_w_frac: 0.05
+    min_vehicle_h_frac: 0.05
+    min_plate_w_px: 20
+    min_plate_h_px: 6
+    plate_conf: 0.15
+    lane_weight: 0.0
+    min_lead_w_frac: 0.0
+    hud_title: "SECS Vision · Kuala Lumpur Bukit Bintang CCTV"
+
+  malaysia_cctv_highway:
+    source: data/videos/candidates/malaysia_sgbuloh_overhead.mp4
+    start_sec: 0.0
+    duration: 30.0
+    out: outputs/malaysia_cctv_highway_30s.mp4
+    min_ground_y_frac: 0.25
+    min_vehicle_w_frac: 0.035
+    min_vehicle_h_frac: 0.035
+    min_plate_w_px: 16
+    min_plate_h_px: 5
+    plate_conf: 0.15
+    lane_weight: 0.0
+    min_lead_w_frac: 0.0
+    hud_title: "SECS Vision · PLUS Highway Overhead Gantry CCTV"
+
+  malaysia_cctv_junction:
+    source: data/videos/candidates/malaysia_kotabharu_traffic.mp4
+    start_sec: 0.0
+    duration: 30.0
+    out: outputs/malaysia_cctv_junction_30s.mp4
+    min_ground_y_frac: 0.20
+    min_vehicle_w_frac: 0.04
+    min_vehicle_h_frac: 0.04
+    min_plate_w_px: 18
+    min_plate_h_px: 6
+    plate_conf: 0.15
+    lane_weight: 0.0
+    min_lead_w_frac: 0.0
+    hud_title: "SECS Vision · Kota Bharu Intersection CCTV"
+
+  # ---- Congestion forecasting, Johor Bahru CIQ (Bangunan Sultan Iskandar) approach roads -----------------
+  # Recorded YouTube live streams of the Causeway Link traffic cameras (TEAM_GUIDE.md section 10). The
+  # cameras sit on high-rise buildings: cars are 15-40 px wide and queue bumper to bumper, so congestion is
+  # measured per zone from keyframes (python -m alpr.congestion), not by tracking single vehicles. Zones
+  # were derived from where traffic moves in each direction (optical flow, 08:00-09:30) and checked with
+  # python -m alpr.lane_tool --show; in each group the first zone is the head of the queue (at the CIQ).
+  # The videos live in data/videos/causeway/<profile>/ as hourly pieces + a .json with each piece's start.
+  #
+  # A: "Camera 02 CIQ Traffics @JB", youtube.com/watch?v=uAVdyvglPco (Live Traffics 2/2), Wed 2023-03-22,
+  # 00:25-09:55, 1080p. On-screen clock = stream start 00:25:12 + t - 13 s (checked on 19 frames).
+  jb_ciq_cam02_2023-03-22:
+    source: data/videos/causeway/jb_ciq_cam02_2023-03-22/*_p*.mp4
+    video_start_time: "2023-03-22T00:24:59"
+    read_plates: false
+    lane_rules: []
+    hud_mode: dashboard
+    hud_title: "SECS Vision · Congestion forecast · JB CIQ approach (Camera 02)"
+    congestion: {jam_occupancy: 0.45}
+    lanes:
+      - {name: TC1, group: To CIQ, direction: up, polygon: [[0.5078, 0.5306], [0.5068, 0.5491], [0.3786, 0.6241], [0.3526, 0.6315], [0.349, 0.6157], [0.3521, 0.6083], [0.4766, 0.5324], [0.4953, 0.5278]]}
+      - {name: TC2, group: To CIQ, direction: up, polygon: [[0.349, 0.6167], [0.3526, 0.6361], [0.3401, 0.6602], [0.2635, 0.7148], [0.2552, 0.6778], [0.3266, 0.6259]]}
+      - {name: TC3, group: To CIQ, direction: up, polygon: [[0.2552, 0.6796], [0.263, 0.7148], [0.2453, 0.7315], [0.1974, 0.7639], [0.1896, 0.7306], [0.2026, 0.6917], [0.2182, 0.6852]]}
+      - {name: TC4, group: To CIQ, direction: up, polygon: [[0.1969, 0.763], [0.1906, 0.7806], [0.1667, 0.8046], [0.1313, 0.8111], [0.1234, 0.8056], [0.1187, 0.7935], [0.1193, 0.7852], [0.1422, 0.7611], [0.1833, 0.7324], [0.1896, 0.7315]]}
+      - {name: FC1, group: From CIQ, direction: down, polygon: [[0.2542, 0.8417], [0.2234, 0.8713], [0.1677, 0.8657], [0.1521, 0.8491], [0.1422, 0.8037], [0.2125, 0.7463], [0.2286, 0.7389]]}
+      - {name: FC2, group: From CIQ, direction: down, polygon: [[0.301, 0.6824], [0.3151, 0.7407], [0.2818, 0.8093], [0.2547, 0.8417], [0.2297, 0.7361]]}
+      - {name: FC3, group: From CIQ, direction: down, polygon: [[0.4271, 0.5972], [0.4406, 0.6528], [0.3156, 0.7407], [0.3021, 0.6861], [0.3021, 0.6778], [0.3714, 0.6259], [0.4125, 0.6]]}
+      - {name: FC4, group: From CIQ, direction: down, polygon: [[0.651, 0.4657], [0.651, 0.4722], [0.5885, 0.5333], [0.4464, 0.6528], [0.4411, 0.6528], [0.4276, 0.5981], [0.6349, 0.4602]]}
+
+  # C: the "IPC" camera of the same channel the day before, Tue 2023-03-21, youtube.com/watch?v=uMBo-qx9M2U
+  # (02:09-14:04; the first 7.9 h are used), same approach road seen from another building, 1080p.
+  # On-screen clock = stream start 02:09:55 + t + 145 s from stream second 2400 on; before that the
+  # recording has gaps (the offset steps from -16 s to +145 s between 02:20 and 02:52), so it is skipped.
+  jb_ciq_ipc_2023-03-21:
+    source: data/videos/causeway/jb_ciq_ipc_2023-03-21/*_p*.mp4
+    video_start_time: "2023-03-21T02:12:20"
+    start_sec: 2400.0
+    read_plates: false
+    lane_rules: []
+    hud_mode: dashboard
+    hud_title: "SECS Vision · Congestion forecast · JB CIQ approach (IPC camera)"
+    congestion: {jam_occupancy: 0.45}
+    lanes:
+      - {name: TC1, group: To CIQ, direction: up, polygon: [[0.5167, 0.387], [0.499, 0.3963], [0.4094, 0.4213], [0.4057, 0.4009], [0.4188, 0.3944], [0.5078, 0.3731], [0.5146, 0.3741]]}
+      - {name: TC2, group: To CIQ, direction: up, polygon: [[0.4057, 0.4019], [0.4078, 0.4213], [0.3312, 0.4639], [0.3271, 0.4269], [0.3802, 0.4065]]}
+      - {name: TC3, group: To CIQ, direction: up, polygon: [[0.3266, 0.4269], [0.3297, 0.4648], [0.2479, 0.4954], [0.2437, 0.4574]]}
+      - {name: TC4, group: To CIQ, direction: up, polygon: [[0.2432, 0.4565], [0.2474, 0.4954], [0.1896, 0.5148], [0.1688, 0.5037], [0.1688, 0.4981], [0.1969, 0.4759], [0.2365, 0.4556]]}
+      - {name: FC1, group: From CIQ, direction: down, polygon: [[0.1109, 0.5556], [0.1219, 0.6315], [0.0469, 0.6769], [0.0307, 0.6833], [0.0, 0.6861], [0.0, 0.6185], [0.0161, 0.6037]]}
+      - {name: FC2, group: From CIQ, direction: down, polygon: [[0.2344, 0.4926], [0.2432, 0.5528], [0.1219, 0.6306], [0.112, 0.5519], [0.213, 0.4935]]}
+      - {name: FC3, group: From CIQ, direction: down, polygon: [[0.35, 0.4444], [0.3578, 0.5009], [0.3125, 0.5556], [0.2615, 0.5889], [0.2536, 0.5898], [0.2432, 0.5519], [0.2349, 0.4926], [0.2724, 0.4648]]}
+      - {name: FC4, group: From CIQ, direction: down, polygon: [[0.5776, 0.4074], [0.574, 0.413], [0.4885, 0.4602], [0.3594, 0.5009], [0.35, 0.4435], [0.3984, 0.4222], [0.5703, 0.3935], [0.5755, 0.3944]]}
+
+  # B: "Live Traffics 1/2", youtube.com/watch?v=MjUd_NZOa4U, Fri 2024-01-12 00:25-11:12, 1080p: another site,
+  # the Causeway approach (top left: the Causeway to Woodlands, Singapore). The stream shows four cameras in
+  # turn, 10 s each; only the "Causeway Link" view is used (view_gate: its on-screen label). On-screen
+  # clock = stream start 00:25:08 + t + 15 s (-10 s before a 25-s recording gap between 03:27 and 04:15).
+  jb_causeway_cam1_2024-01-12:
+    source: data/videos/causeway/jb_causeway_cam1_2024-01-12/*_p*.mp4
+    video_start_time: "2024-01-12T00:25:23"
+    read_plates: false
+    lane_rules: []
+    hud_mode: dashboard
+    hud_title: "SECS Vision · Congestion forecast · Causeway approach, Johor Bahru"
+    view_gate: {template: alpr/views/jb_causeway_cam1_label.png, box: [0.0969, 0.8019, 0.3177, 0.8537],
+                binary_level: 200, min_score: 0.5}
+    congestion: {jam_occupancy: 0.45, sky_box: [0.0, 0.25, 0.12, 0.45]}   # no sky in view: the water, left
+    lanes:
+      - {name: TS1, group: To SG, direction: up, polygon: [[0.099, 0.1343], [0.1078, 0.1306], [0.3083, 0.2741], [0.3573, 0.3324], [0.4073, 0.4176], [0.362, 0.4991], [0.1401, 0.2185], [0.1219, 0.188], [0.099, 0.1398]]}
+      - {name: TS2, group: To SG, direction: up, polygon: [[0.4073, 0.4185], [0.4375, 0.462], [0.501, 0.5843], [0.5104, 0.6093], [0.4568, 0.7065], [0.4458, 0.6944], [0.413, 0.6278], [0.376, 0.5426], [0.3625, 0.5]]}
+      - {name: TS3, group: To SG, direction: up, polygon: [[0.5109, 0.6102], [0.5432, 0.6657], [0.5943, 0.7806], [0.5312, 0.8935], [0.4984, 0.862], [0.4573, 0.7083]]}
+      - {name: TS4, group: To SG, direction: up, polygon: [[0.5318, 0.8935], [0.5943, 0.7815], [0.6505, 0.8454], [0.6797, 0.9185], [0.699, 0.9991], [0.5896, 0.9991]]}
+      - {name: FS1, group: From SG, direction: down, polygon: [[0.6625, 0.8954], [0.7047, 0.8083], [0.7109, 0.8074], [0.8448, 0.9769], [0.8453, 0.9991], [0.6979, 0.9991], [0.6792, 0.9556]]}
+      - {name: FS2, group: From SG, direction: down, polygon: [[0.5833, 0.5991], [0.6953, 0.7843], [0.7042, 0.8083], [0.6625, 0.8944], [0.5818, 0.763], [0.5526, 0.7046], [0.5474, 0.6731]]}
+      - {name: FS3, group: From SG, direction: down, polygon: [[0.4453, 0.3361], [0.5828, 0.5991], [0.5469, 0.6731], [0.5339, 0.6583], [0.412, 0.4324], [0.4099, 0.4093]]}
+      - {name: FS4, group: From SG, direction: down, polygon: [[0.101, 0.1074], [0.1182, 0.1065], [0.3906, 0.263], [0.4359, 0.312], [0.4453, 0.3352], [0.4089, 0.4111], [0.1698, 0.1991], [0.1026, 0.1194]]}
+
+  cctv:
+    source: data/videos/anpr_sample_clear.mp4
+    start_sec: 8.0
+    duration: 8.0
+    out: outputs/cctv_anpr_tracked_clear.mp4
+    vehicle_classes: [2, 5, 7]
+    vehicle_conf: 0.30
+    heavy_vehicle_conf: 0.30
+    min_ground_y_frac: 0.185
+    min_vehicle_w_frac: 0.0625
+    plate_conf: 0.25
+    plate_aspect_min: 1.5
+    plate_aspect_max: 5.5
+    plate_det_interval: 1
+    lane_weight: 0.0
+    min_lead_w_frac: 0.0
+    hud_title: "SECS Vision · Highway ANPR"

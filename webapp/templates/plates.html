@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<form id="search" class="card" style="margin-bottom:14px">
+  <div class="row" style="align-items:flex-end">
+    <label class="field">Plate (fuzzy; * and ? wildcards)<input name="plate" placeholder="e.g. XSD 4004" style="width:170px"></label>
+    <label class="field">OCR tolerance
+      <span class="seg" id="tol"><button type="button" data-v="0">0</button><button type="button" data-v="1" class="on">1</button><button type="button" data-v="2">2</button></span></label>
+    <label class="field">From<input name="start" type="datetime-local"></label>
+    <label class="field">To<input name="end" type="datetime-local"></label>
+    <label class="field">Camera<select name="camera_id"><option value="">All cameras</option></select></label>
+    <label class="field">Vehicle type<select name="vtype"><option value="">All</option><option>Car</option><option>Motorcycle</option><option>Truck</option><option>Bus</option></select></label>
+    <label class="field">Reading<select name="status"><option value="">Confirmed + provisional</option><option value="CONFIRMED">Confirmed</option><option value="TENTATIVE">Provisional (reading)</option></select></label>
+    <label class="field">Simulated data<select name="provenance"><option value="">Include</option><option value="camera">Camera data only</option><option value="simulated">Simulated only</option></select></label>
+  </div>
+  <div class="row" style="align-items:flex-end;margin-top:10px">
+    <label class="field">Purpose (recorded in the audit log)<select name="purpose" required><option value="">Choose a purpose…</option>
+      {% for p in purposes %}<option>{{ p }}</option>{% endfor %}</select></label>
+    <label class="field">Case / reference (optional)<input name="reference" style="width:170px"></label>
+    <button class="btn primary" type="submit">Search</button>
+    <button class="btn" type="button" id="csv">Export CSV</button>
+    <span class="muted" id="masknote" style="font-size:12px"></span>
+  </div>
+</form>
+<div class="split">
+  <section class="card flush"><div id="results"><div class="empty">Choose a purpose and search. Every search is recorded in the audit log.</div></div></section>
+  <aside class="stack sticky">
+    <div id="player"></div>
+    <section class="card" id="detail"><div class="empty">Click a record to play the video one second before it and see its details.</div></section>
+  </aside>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/pages/plates.js"></script>{% endblock %}

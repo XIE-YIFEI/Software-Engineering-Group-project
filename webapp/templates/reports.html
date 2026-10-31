@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<form id="f" class="card row" style="align-items:flex-end;margin-bottom:14px">
+  <label class="field">Report<select name="kind"></select></label>
+  <label class="field">Period<select name="span"><option value="daily">Daily</option><option value="weekly">Weekly (Mon–Sun)</option></select></label>
+  <label class="field">Date<input name="date" type="date" required></label>
+  <button class="btn primary" type="submit">Preview</button>
+  <button class="btn" type="button" id="csv">CSV</button><button class="btn" type="button" id="pdf">PDF</button>
+  <span class="muted" style="font-size:12px">The demo footage uses the notional day 14 Oct 2026; the CIQ congestion data are from 21–22 Mar 2023.</span>
+</form>
+<section class="card" id="out"><div class="empty">Choose a report.</div></section>
+{% endblock %}
+{% block scripts %}<script src="/static/js/pages/reports.js"></script>{% endblock %}

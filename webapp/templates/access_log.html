@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<form id="f" class="card row" style="align-items:flex-end;margin-bottom:14px">
+  <label class="field">Plate (fuzzy)<input name="plate" style="width:160px"></label>
+  <label class="field">From<input name="start" type="date"></label>
+  <label class="field">To<input name="end" type="date"></label>
+  <label class="field">Decision<select name="decision"><option value="">All</option><option value="allowed">Allowed</option><option value="stopped">Stopped</option><option value="exited">Exited</option></select></label>
+  <label class="field">Identity<select name="identity"><option value="">All</option><option value="resident">Resident</option><option value="visitor_pre">Pre-registered visitor</option><option value="visitor_unregistered">Unregistered visitor</option><option value="banned">Banned</option></select></label>
+  <button class="btn primary" type="submit">Search</button><button class="btn" type="button" id="csv">Export CSV</button>
+</form>
+<section class="card flush"><div id="log"><div class="empty">Loading…</div></div></section>
+{% endblock %}
+{% block scripts %}<script src="/static/js/pages/access_log.js"></script>{% endblock %}

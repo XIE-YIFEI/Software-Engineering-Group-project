@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evidence pack · alert #{{ p.alert.id }} · {{ p.mark }}</title>
+<style>
+  :root { --ink: #1d1d22; --muted: #66666e; --line: #d9d9de; --red: #d70015; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 "Segoe UI Variable", "Segoe UI", -apple-system, Arial, sans-serif; color: var(--ink);
+         background: #fff; }
+  .mark { position: fixed; left: 0; right: 0; z-index: 10; background: var(--red); color: #fff; text-align: center;
+          font-weight: 700; letter-spacing: .04em; padding: 6px 8px; font-size: 13px; }
+  .mark.top { top: 0; } .mark.bottom { bottom: 0; }
+  .water { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none;
+           z-index: 0; }
+  .water span { transform: rotate(-32deg); font-size: 84px; font-weight: 800; color: rgba(215, 0, 21, .07);
+                white-space: nowrap; }
+  main { position: relative; z-index: 1; max-width: 860px; margin: 0 auto; padding: 56px 24px 64px; }
+  h1 { font-size: 24px; margin: 8px 0 4px; } h2 { font-size: 16px; margin: 26px 0 8px; border-bottom: 1px solid var(--line);
+       padding-bottom: 4px; }
+  .disclaimer { color: var(--red); font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 13px; }
+  th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 5px 6px; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; width: 28%; }
+  figure { margin: 10px 0 18px; } figure img { max-width: 100%; border: 1px solid var(--line); }
+  figure.crop img { max-width: 360px; }
+  figcaption, .small { color: var(--muted); font-size: 12px; }
+  code { font-family: Consolas, "SF Mono", monospace; font-size: 12px; word-break: break-all; }
+  .no { color: var(--red); font-weight: 600; } .ok { color: #1a7f37; }
+  @media print { .mark { position: fixed; } main { padding-top: 40px; } }
+</style>
+</head>
+<body>
+<div class="mark top">{{ p.mark | upper }}</div>
+<div class="water"><span>COURSE PROJECT DEMO</span></div>
+<main>
+  <h1>Evidence pack · {{ p.alert.title }} · {{ p.alert.plate or "no plate" }}</h1>
+  <p class="disclaimer">{{ p.disclaimer }}</p>
+
+  <h2>Case summary</h2>
+  <table>
+    <tr><th>Alert</th><td>#{{ p.alert.id }} {{ p.alert.code }} ({{ p.alert.severity }}): {{ p.alert.message }}</td></tr>
+    <tr><th>Plate</th><td>{{ p.alert.plate or "-" }}</td></tr>
+    <tr><th>Seen at</th><td>{{ p.alert.seen_at[:19] }} (Malaysia time)</td></tr>
+    <tr><th>Camera</th><td>{{ p.run.camera_name }}</td></tr>
+    <tr><th>Location</th><td>{{ p.run.location_note or "-" }}</td></tr>
+    <tr><th>Run</th><td>{{ p.run.label }}</td></tr>
+    <tr><th>Provenance</th><td>{{ p.provenance_label }}</td></tr>
+    <tr><th>Status</th><td>{{ p.alert.status }}</td></tr>
+    {% if p.clock_note %}<tr><th>Clock</th><td>{{ p.clock_note }}</td></tr>{% endif %}
+  </table>
+
+  {% for img in images %}
+  <h2>{{ img.title }}</h2>
+  <figure class="{{ 'crop' if img.name == 'plate_crop.jpg' else '' }}">
+    <img src="data:image/jpeg;base64,{{ img.data }}" alt="{{ img.title }}">
+    <figcaption>{{ img.caption }}<br>SHA-256 <code>{{ img.sha256 }}</code></figcaption>
+  </figure>
+  {% endfor %}
+
+  {% if p.comparison %}
+  <h2>Registry comparison · {{ p.registry_name }}</h2>
+  <table>
+    <tr><th>Field</th><th>Registered (SIMULATED)</th><th>Observed</th><th>Match</th></tr>
+    {% for c in p.comparison %}
+    <tr><td>{{ c.field }}</td><td>{{ c.registered }}</td><td>{{ c.observed }}</td>
+        <td>{% if c.match is none %}{% elif c.match %}<span class="ok">yes</span>{% else %}<span class="no">no</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  {% if p.travel %}
+  <h2>Sightings of this plate (cross-camera)</h2>
+  <table>
+    <tr><th>Time</th><th>Place</th><th>Source</th></tr>
+    {% for x in p.travel.points %}<tr><td>{{ x.seen_at[:19] }}</td><td>{{ x.place }}</td><td>{{ x.provenance_label or x.source }}</td></tr>{% endfor %}
+  </table>
+  <ul>{% for leg in p.travel.legs %}<li class="{{ 'no' if leg.impossible else '' }}">{{ leg.message }}</li>{% endfor %}</ul>
+  <p class="small">{{ p.travel.rule }}</p>
+  {% endif %}
+
+  {% if p.speed_text %}
+  <h2>Measurement</h2>
+  <p>{{ p.speed_text }}. Speeds come only from calibrated cameras (6.5 % 1-sigma calibration error).</p>
+  {% endif %}
+
+  <h2>Legal reference · Road Transport Act 1987 (Act 333)</h2>
+  {% if not p.legal %}
+  <p>No section of the Road Transport Act 1987 is cited for this kind of alert.</p>
+  {% else %}
+  <table>
+    {% for s in p.legal.sections %}
+    <tr><th>Section {{ s.section }}</th><td><strong>{{ s.title }}</strong> <span class="small">({{ s.title_ms }})</span><br>{{ s.text }}</td></tr>
+    {% endfor %}
+  </table>
+  {% if p.legal.note %}<p class="small">{{ p.legal.note }}</p>{% endif %}
+  <p class="small">The alert relates to these provisions; whether an offence was committed is not decided here. Checked on
+    {{ p.legal.checked }} against: {% for s in p.legal.sources %}<a href="{{ s.url }}">{{ s.title }}</a> (published by {{ s.publisher }}){% if not loop.last %}; {% endif %}{% endfor %}.
+    {{ p.legal.source_note }} Penalties are not quoted: they have been amended since.</p>
+  {% endif %}
+
+  <h2>Processing</h2>
+  <table>
+    <tr><th>Software</th><td>{{ p.processing.software }}</td></tr>
+    <tr><th>Run</th><td>{{ p.processing.run }}</td></tr>
+    <tr><th>Profile</th><td>{{ p.processing.profile or "-" }}</td></tr>
+    <tr><th>Results file</th><td><code>{{ p.processing.results_file }}</code></td></tr>
+    <tr><th>Results SHA-256</th><td><code>{{ p.processing.results_sha256 }}</code></td></tr>
+    <tr><th>Models</th><td>{{ p.processing.vehicle_model }}, {{ p.processing.plate_model }}, OCR {{ p.processing.ocr_model }}</td></tr>
+  </table>
+
+  <h2>Integrity</h2>
+  <p>{{ p.hash_note }}</p>
+  <p class="small">Exported by {{ p.exported_by }} at {{ p.exported_at }} (Malaysia time). The SHA-256 of this file is recorded
+    in the system's audit log.</p>
+</main>
+<div class="mark bottom">{{ p.mark | upper }}</div>
+</body>
+</html>

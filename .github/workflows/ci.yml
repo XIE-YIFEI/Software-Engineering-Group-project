@@ -1,0 +1,39 @@
+# Runs on every push and pull request: the 86 unit tests of the recognition code (no models, no GPU) and the tests of
+# the web system (FastAPI TestClient on a temporary database filled from the committed demo results).
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+
+      - name: System libraries (OpenCV needs libGL; DejaVu fonts for the rendered panels and PDFs)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libgl1 fonts-dejavu-core
+          sudo apt-get install -y -q libglib2.0-0t64 || sudo apt-get install -y -q libglib2.0-0
+
+      - name: Install (CPU-only torch, no CUDA download)
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements-ci.txt
+
+      - name: Unit tests of the recognition code (alpr)
+        run: python alpr/tests/test_alpr.py
+
+      - name: Web system tests (FastAPI TestClient)
+        run: python webapp/tests/test_web.py

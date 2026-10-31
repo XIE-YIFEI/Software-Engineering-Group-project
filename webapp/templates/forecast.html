@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stack">
+  <section class="card">
+    <div class="row">
+      <label class="field" style="flex-direction:row;align-items:center;gap:8px">Day <select id="day"></select></label>
+      <b style="margin-left:8px">Replay clock</b>
+      <button class="btn small" id="prev" type="button">◀</button>
+      <span id="clock" class="num" style="font-size:20px;font-weight:600;min-width:64px;text-align:center">--:--</span>
+      <button class="btn small" id="next" type="button">▶</button>
+      <input id="slider" type="range" min="0" max="0" value="0" style="flex:1;min-width:200px">
+      <button class="btn primary" id="play" type="button">Play</button>
+      <button class="btn" id="towarn" type="button">Go to the first warning</button>
+    </div>
+    <p class="faint" id="daynote" style="font-size:12px;margin:8px 0 0"></p>
+  </section>
+  <div class="grid" id="sections" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))"></div>
+  <div class="split">
+    <section class="card">
+      <div class="row between"><h2>Forecast vs actual</h2>
+        <span class="row"><select id="section"></select><span class="seg" id="horizon"><button type="button" data-h="5">+5</button><button type="button" data-h="15">+15</button><button type="button" data-h="30" class="on">+30 min</button></span></span></div>
+      <div id="acc"></div><div class="row" id="accstats" style="margin-top:8px"></div>
+    </section>
+    <section class="stack">
+      <div id="player"></div>
+      <p class="faint" id="videonote" style="font-size:12px;margin:0"></p>
+    </section>
+  </div>
+  <section class="card">
+    <div class="row between"><h2>What-if: open more lanes <span class="pill orange" style="margin-left:8px">Estimate under stated assumptions</span></h2></div>
+    <div class="row" style="align-items:flex-end;margin-bottom:10px">
+      <label class="field">Extra discharge capacity<span class="seg" id="cap"><button type="button" data-p="0">+0 %</button><button type="button" data-p="10">+10 %</button><button type="button" data-p="20" class="on">+20 %</button><button type="button" data-p="30">+30 %</button></span></label>
+      <label class="field">From (warning time)<input id="wstart" type="time"></label>
+      <label class="field">Discharge capacity μ (vehicles/min in view)<input id="mu" type="number" min="0.05" step="0.05" style="width:120px" placeholder="estimated"></label>
+      <span class="muted" id="wstats"></span>
+    </div>
+    <div id="whatif"></div>
+    <details style="margin-top:10px" open><summary class="muted">Assumptions of this model</summary><ul id="assumptions" class="muted" style="font-size:13px"></ul></details>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/pages/forecast.js"></script>{% endblock %}

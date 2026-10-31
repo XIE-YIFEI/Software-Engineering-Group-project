@@ -1,0 +1,18 @@
+# SIMULATED violations for the demo video (python -m alpr.simulate).
+# The plates of the vehicles below are digitally replaced with FICTITIOUS plates: X-series (no
+# Malaysian state uses X) or a malformed plate. Their records live in the simulated demo registry
+# (alpr/registry.py DEMO_SCENARIOS). Every other vehicle keeps its real plate and must come out VALID.
+# Source: LILIN CCTV MALAYSIA "INTEL AIDA ANPR TESTING" (youtube.com/watch?v=raQOCJ_wzKE), whole clip.
+source: data/videos/malaysia_lilin_anpr_road.mp4
+frame_crop: [0.0156, 0.0741, 0.7943, 0.9491]     # same crop as profile malaysia_road_anpr (vendor UI off)
+start_sec: 0
+duration: 0                                        # 0 = to the end (155 s)
+out: data/videos/malaysia_road_violations_SIMULATED.mp4
+swaps:
+  - {real: QMU79,   fake: "XSD 4004",  note: "DUPLICATE: same plate seen in Johor Bahru 17 min before (simulated sighting)"}
+  - {real: WB8376G, fake: "XSA 1001",  note: "EXPIRED road tax + TYPE_MISMATCH: registered as a motorcycle"}
+  - {real: WLK6994, fake: "XSE 5005",  note: "UNMATCHED: no registration record"}
+  - {real: W6336P,  fake: "WXY 12345", note: "ILLEGAL_FORMAT: five digits, no Malaysian plate has more than four"}
+  - {real: WWD6737, fake: "XSB 2002",  note: "BLACKLIST: reported stolen"}
+  - {real: CAX3029, fake: "XSG 7007",  note: "DUPLICATE: the same plate on two cars in view at once (cloned)"}
+  - {real: VCH1587, fake: "XSG 7007",  note: "DUPLICATE: the same plate on two cars in view at once (cloned)"}

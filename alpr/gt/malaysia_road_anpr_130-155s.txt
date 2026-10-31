@@ -1,0 +1,3 @@
+# Hand-labelled plates, data/videos/malaysia_lilin_anpr_road.mp4, 130-155 s (end of clip). WB 7605 J and
+# VN 1683 cross from the 100-130 s window and are listed there. Format as in the 100-130 s file.
+VCV155      # white Mercedes C-class (~149 s)

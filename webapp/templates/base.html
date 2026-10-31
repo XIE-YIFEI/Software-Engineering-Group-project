@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }} · SECS Vision</title>
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand"><div class="brand-mark">SV</div><div><b>SECS Vision</b><small class="muted">Plates · traffic · gate</small></div></div>
+    <nav class="nav">
+      {% for key, label, url in nav %}<a href="{{ url }}" class="{{ 'on' if key == active else '' }}">{{ label }}</a>{% endfor %}
+    </nav>
+    <div class="legend">
+      <span class="pill purple"><span class="d"></span>Simulated · inserted plate</span>
+      <span class="pill purple"><span class="d"></span>Simulated · synthetic</span>
+      <span>Vehicle registry: SIMULATED (no JPJ data). Fictitious violators use X-series plates.</span>
+      <span>Privacy controls follow the data-minimisation principle of Malaysia's PDPA 2010; every search, view and reveal is logged.</span>
+      <span class="faint">Course project demo</span>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="top">
+      <h1>{{ title }}</h1>
+      {% block top %}{% endblock %}
+      <div class="spacer"></div>
+      <span class="chip demo" title="Recorded public footage replayed with a notional clock; congestion cameras keep their real dates">Demo data · notional clock</span>
+      <div class="who">
+        <span>{{ user.display_name }}</span><span class="chip">{{ role_label }}</span>
+        <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small" type="submit">Sign out</button></form>
+      </div>
+    </div>
+    {% block content %}{% endblock %}
+  </main>
+</div>
+<script>window.SECS = {{ {"user": {"id": user.id, "username": user.username, "display_name": user.display_name, "role": user.role, "site_id": user.site_id, "masked": user.masked}, "csrf": csrf, "purposes": purposes, "revealReasons": reveal_reasons} | tojson }};</script>
+<script src="/static/js/app.js"></script>
+<script src="/static/js/charts.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,3951 @@
+{
+  "source": "data/videos/malaysia_selayang_overhead.mp4",
+  "profile": "malaysia_selayang_lanes",
+  "fps": 30.0,
+  "frames": 3600,
+  "window_sec": [
+    0.0,
+    120.0
+  ],
+  "plates": [],
+  "flow": {
+    "count_line_y": 0.78,
+    "total": 355,
+    "by_type": {
+      "Motorcycle": 110,
+      "Car": 229,
+      "Truck": 15,
+      "Bus": 1
+    },
+    "per_10s": [
+      {
+        "t_start": 0.0,
+        "t_end": 10.0,
+        "total": 27,
+        "Motorcycle": 13,
+        "Car": 12,
+        "Truck": 2
+      },
+      {
+        "t_start": 10.0,
+        "t_end": 20.0,
+        "total": 12,
+        "Car": 11,
+        "Motorcycle": 1
+      },
+      {
+        "t_start": 20.0,
+        "t_end": 30.0,
+        "total": 32,
+        "Car": 22,
+        "Truck": 1,
+        "Motorcycle": 8,
+        "Bus": 1
+      },
+      {
+        "t_start": 30.0,
+        "t_end": 40.0,
+        "total": 33,
+        "Car": 22,
+        "Motorcycle": 11
+      },
+      {
+        "t_start": 40.0,
+        "t_end": 50.0,
+        "total": 29,
+        "Motorcycle": 6,
+        "Car": 22,
+        "Truck": 1
+      },
+      {
+        "t_start": 50.0,
+        "t_end": 60.0,
+        "total": 27,
+        "Car": 18,
+        "Truck": 2,
+        "Motorcycle": 7
+      },
+      {
+        "t_start": 60.0,
+        "t_end": 70.0,
+        "total": 37,
+        "Car": 30,
+        "Motorcycle": 7
+      },
+      {
+        "t_start": 70.0,
+        "t_end": 80.0,
+        "total": 25,
+        "Car": 23,
+        "Truck": 1,
+        "Motorcycle": 1
+      },
+      {
+        "t_start": 80.0,
+        "t_end": 90.0,
+        "total": 23,
+        "Motorcycle": 6,
+        "Car": 15,
+        "Truck": 2
+      },
+      {
+        "t_start": 90.0,
+        "t_end": 100.0,
+        "total": 30,
+        "Motorcycle": 13,
+        "Car": 15,
+        "Truck": 2
+      },
+      {
+        "t_start": 100.0,
+        "t_end": 110.0,
+        "total": 40,
+        "Car": 22,
+        "Motorcycle": 17,
+        "Truck": 1
+      },
+      {
+        "t_start": 110.0,
+        "t_end": 120.0,
+        "total": 40,
+        "Car": 17,
+        "Motorcycle": 20,
+        "Truck": 3
+      }
+    ]
+  },
+  "lanes": {
+    "lanes": [
+      "In1",
+      "In2",
+      "In3",
+      "In4",
+      "Out1",
+      "Out2",
+      "Out3",
+      "Out4"
+    ],
+    "count_line_y": 0.78,
+    "ref_shift": 0.3,
+    "per_lane": {
+      "In1": {
+        "group": "Inbound",
+        "direction": "down",
+        "count": 42,
+        "by_type": {
+          "Car": 36,
+          "Motorcycle": 6
+        },
+        "veh_per_min": 21.0,
+        "occupancy": 0.114,
+        "density": 15.23,
+        "density_unit": "veh/km",
+        "zone_length_m": 22.1,
+        "mean_speed_kmh": 86.7
+      },
+      "In2": {
+        "group": "Inbound",
+        "direction": "down",
+        "count": 51,
+        "by_type": {
+          "Car": 40,
+          "Truck": 2,
+          "Motorcycle": 9
+        },
+        "veh_per_min": 25.5,
+        "occupancy": 0.199,
+        "density": 24.02,
+        "density_unit": "veh/km",
+        "zone_length_m": 22.9,
+        "mean_speed_kmh": 67.4
+      },
+      "In3": {
+        "group": "Inbound",
+        "direction": "down",
+        "count": 50,
+        "by_type": {
+          "Truck": 3,
+          "Motorcycle": 23,
+          "Car": 24
+        },
+        "veh_per_min": 25.0,
+        "occupancy": 0.167,
+        "density": 22.35,
+        "density_unit": "veh/km",
+        "zone_length_m": 23.7,
+        "mean_speed_kmh": 65.0
+      },
+      "In4": {
+        "group": "Inbound",
+        "direction": "down",
+        "count": 27,
+        "by_type": {
+          "Car": 18,
+          "Truck": 2,
+          "Motorcycle": 7
+        },
+        "veh_per_min": 13.5,
+        "occupancy": 0.125,
+        "density": 15.5,
+        "density_unit": "veh/km",
+        "zone_length_m": 24.6,
+        "mean_speed_kmh": 58.3
+      },
+      "Out1": {
+        "group": "Outbound",
+        "direction": "up",
+        "count": 85,
+        "by_type": {
+          "Motorcycle": 44,
+          "Car": 39,
+          "Truck": 2
+        },
+        "veh_per_min": 42.5,
+        "occupancy": 0.584,
+        "density": 111.3,
+        "density_unit": "veh/km",
+        "zone_length_m": 20.7,
+        "mean_speed_kmh": 27.2
+      },
+      "Out2": {
+        "group": "Outbound",
+        "direction": "up",
+        "count": 48,
+        "by_type": {
+          "Car": 33,
+          "Motorcycle": 14,
+          "Truck": 1
+        },
+        "veh_per_min": 24.0,
+        "occupancy": 0.613,
+        "density": 104.06,
+        "density_unit": "veh/km",
+        "zone_length_m": 20.0,
+        "mean_speed_kmh": 22.0
+      },
+      "Out3": {
+        "group": "Outbound",
+        "direction": "up",
+        "count": 18,
+        "by_type": {
+          "Car": 13,
+          "Truck": 3,
+          "Motorcycle": 2
+        },
+        "veh_per_min": 9.0,
+        "occupancy": 0.754,
+        "density": 117.95,
+        "density_unit": "veh/km",
+        "zone_length_m": 19.3,
+        "mean_speed_kmh": 6.8
+      },
+      "Out4": {
+        "group": "Outbound",
+        "direction": "up",
+        "count": 30,
+        "by_type": {
+          "Car": 23,
+          "Bus": 1,
+          "Motorcycle": 4,
+          "Truck": 2
+        },
+        "veh_per_min": 15.0,
+        "occupancy": 0.914,
+        "density": 253.73,
+        "density_unit": "veh/km",
+        "zone_length_m": 15.4,
+        "mean_speed_kmh": 8.5
+      }
+    },
+    "crossings": [
+      {
+        "time_sec": 0.83,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 24,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 0.9,
+        "lane": "In4",
+        "vtype": "Car",
+        "track_id": 8,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 1.17,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 12,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 1.47,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 30,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 2.0,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 61,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 2.03,
+        "lane": "In3",
+        "vtype": "Truck",
+        "track_id": 20,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 2.57,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 81,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 3.03,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 104,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 3.23,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 9,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 3.73,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 103,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 3.77,
+        "lane": "In2",
+        "vtype": "Truck",
+        "track_id": 21,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 3.9,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 132,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 4.63,
+        "lane": "Out3",
+        "vtype": "Car",
+        "track_id": 3,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 4.9,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 188,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 4.97,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 274,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 5.3,
+        "lane": "Out2",
+        "vtype": "Motorcycle",
+        "track_id": 205,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 5.93,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 167,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 5.97,
+        "lane": "In4",
+        "vtype": "Car",
+        "track_id": 45,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 6.1,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 282,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 6.17,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 113,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 6.37,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 273,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 6.53,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 232,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 6.6,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 323,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 6.97,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 7,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 7.43,
+        "lane": "In4",
+        "vtype": "Car",
+        "track_id": 190,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 8.73,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 322,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 9.9,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 381,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 10.37,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 293,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 10.77,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 371,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 11.53,
+        "lane": "In4",
+        "vtype": "Car",
+        "track_id": 390,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 12.03,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 423,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 13.2,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 453,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 14.5,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 311,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 16.73,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 578,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 17.2,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 444,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 17.77,
+        "lane": "Out3",
+        "vtype": "Car",
+        "track_id": 108,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 18.93,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 547,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 19.63,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 473,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 19.63,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 592,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 21.03,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 680,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 21.4,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 616,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 21.43,
+        "lane": "In4",
+        "vtype": "Truck",
+        "track_id": 421,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 21.87,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 777,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 22.0,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 554,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 22.5,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 789,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 22.73,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 546,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 23.13,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 814,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 23.3,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 804,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 23.57,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 820,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 23.67,
+        "lane": "In4",
+        "vtype": "Car",
+        "track_id": 551,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 23.8,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 790,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 24.4,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 745,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 24.83,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 791,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 24.97,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 611,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 25.23,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 849,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 25.4,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 828,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 25.47,
+        "lane": "In4",
+        "vtype": "Car",
+        "track_id": 774,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 26.0,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 873,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 26.1,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 884,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 26.37,
+        "lane": "Out4",
+        "vtype": "Bus",
+        "track_id": 6,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 26.67,
+        "lane": "In4",
+        "vtype": "Motorcycle",
+        "track_id": 930,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 26.73,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 883,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 27.1,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 854,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 27.4,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 889,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 27.97,
+        "lane": "In2",
+        "vtype": "Motorcycle",
+        "track_id": 995,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 28.13,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 891,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 28.13,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 954,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 28.37,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 961,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 28.83,
+        "lane": "",
+        "vtype": "Car",
+        "track_id": 856,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 29.03,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 938,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 29.1,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 983,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 30.73,
+        "lane": "In4",
+        "vtype": "Car",
+        "track_id": 957,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 30.73,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 975,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 30.93,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 947,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 31.2,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 969,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 31.2,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 1092,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 31.6,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 1108,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 31.7,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 1045,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 31.83,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 1073,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 32.43,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 1067,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 32.73,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 1043,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 32.77,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 1081,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 33.17,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 1104,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 33.5,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 1099,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 34.2,
+        "lane": "In4",
+        "vtype": "Motorcycle",
+        "track_id": 1145,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 34.77,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 1163,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 34.8,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 1095,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 35.23,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 1138,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 35.37,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 1105,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 36.1,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 1129,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 36.23,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 1180,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 36.67,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 1132,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 36.97,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 1152,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 37.0,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 1189,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 37.2,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 1188,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 37.57,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 1155,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 37.63,
+        "lane": "In4",
+        "vtype": "Motorcycle",
+        "track_id": 1214,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 37.83,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 1203,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 38.53,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 1230,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 38.77,
+        "lane": "In2",
+        "vtype": "Motorcycle",
+        "track_id": 1261,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 39.2,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 1254,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 39.43,
+        "lane": "In4",
+        "vtype": "Car",
+        "track_id": 1193,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 39.7,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 1222,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 39.8,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 1273,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 40.3,
+        "lane": "In4",
+        "vtype": "Motorcycle",
+        "track_id": 1295,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 40.5,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 1204,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 40.77,
+        "lane": "Out4",
+        "vtype": "Motorcycle",
+        "track_id": 1287,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 40.8,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 1249,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 41.13,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 806,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 41.23,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 1253,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 41.9,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 1260,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 42.6,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 1315,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 43.1,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 1286,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 43.57,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 1276,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 43.83,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 1297,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 44.6,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 1300,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 44.83,
+        "lane": "Out3",
+        "vtype": "Truck",
+        "track_id": 324,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 44.97,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 1387,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 45.0,
+        "lane": "In2",
+        "vtype": "Motorcycle",
+        "track_id": 1424,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 45.03,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 1391,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 45.17,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 1392,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 45.4,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 910,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 45.97,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 1406,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 46.3,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 1383,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 46.4,
+        "lane": "In2",
+        "vtype": "Motorcycle",
+        "track_id": 1461,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 46.63,
+        "lane": "In4",
+        "vtype": "Car",
+        "track_id": 1359,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 46.83,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 1462,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 47.9,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 1439,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 47.93,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 1370,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 48.7,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 1486,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 49.1,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 1517,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 49.67,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 1483,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 49.73,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 1474,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 50.93,
+        "lane": "In4",
+        "vtype": "Car",
+        "track_id": 1512,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 51.0,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 1430,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 51.6,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 1539,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 52.57,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 1471,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 52.8,
+        "lane": "In4",
+        "vtype": "Car",
+        "track_id": 1575,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 52.93,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 1554,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 53.13,
+        "lane": "Out1",
+        "vtype": "Truck",
+        "track_id": 1490,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 53.27,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 1605,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 53.6,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 1591,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 53.97,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 1618,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 54.27,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 1599,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 55.23,
+        "lane": "Out4",
+        "vtype": "Motorcycle",
+        "track_id": 1623,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 55.33,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 1600,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 55.5,
+        "lane": "Out3",
+        "vtype": "Truck",
+        "track_id": 1268,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 55.73,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 1635,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 55.83,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 1668,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 55.9,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 1607,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 56.3,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 1502,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 56.3,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 1655,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 56.4,
+        "lane": "",
+        "vtype": "Car",
+        "track_id": 1588,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 56.5,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 1615,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 57.37,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 1687,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 57.63,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 1643,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 57.83,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 1639,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 58.73,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 1759,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 58.87,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 1663,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 59.9,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 1703,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 60.37,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 1716,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 60.43,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 1804,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 60.5,
+        "lane": "In4",
+        "vtype": "Car",
+        "track_id": 1674,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 60.83,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 498,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 61.0,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 1652,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 61.13,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 1834,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 61.3,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 1801,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 61.83,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 1802,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 61.93,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 1781,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 62.23,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 1739,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 62.3,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 1787,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 62.6,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 1807,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 62.73,
+        "lane": "Out2",
+        "vtype": "Motorcycle",
+        "track_id": 1842,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 62.83,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 1812,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 63.5,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 1847,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 63.53,
+        "lane": "Out3",
+        "vtype": "Car",
+        "track_id": 1489,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 63.8,
+        "lane": "In4",
+        "vtype": "Car",
+        "track_id": 1775,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 63.8,
+        "lane": "Out2",
+        "vtype": "Motorcycle",
+        "track_id": 1866,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 64.1,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 1817,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 64.1,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 1833,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 64.4,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 1835,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 65.17,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 1868,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 65.8,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 1905,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 66.07,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 1859,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 66.4,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 1849,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 66.6,
+        "lane": "In1",
+        "vtype": "Motorcycle",
+        "track_id": 1950,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 66.9,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 1956,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 67.33,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 1928,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 67.47,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 1907,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 67.7,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 1892,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 68.03,
+        "lane": "In4",
+        "vtype": "Car",
+        "track_id": 1908,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 68.2,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 1920,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 68.77,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 1910,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 68.77,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 1941,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 69.0,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 1940,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 69.33,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 1971,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 69.63,
+        "lane": "Out3",
+        "vtype": "Car",
+        "track_id": 1633,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 70.57,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 1968,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 70.6,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 1984,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 71.2,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 2000,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 71.8,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 2033,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 72.83,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 2053,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 72.93,
+        "lane": "In4",
+        "vtype": "Car",
+        "track_id": 2056,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 72.93,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 2059,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 73.53,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 2087,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 73.63,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 2092,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 74.17,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 2088,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 74.77,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 2110,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 75.03,
+        "lane": "Out4",
+        "vtype": "Truck",
+        "track_id": 1650,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 75.23,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 2134,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 75.73,
+        "lane": "Out3",
+        "vtype": "Car",
+        "track_id": 1977,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 75.8,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 2167,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 76.5,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 2169,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 76.7,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 1078,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 76.97,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 2163,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 77.23,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 2200,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 77.37,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 2222,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 78.0,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 2205,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 79.17,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 2129,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 79.33,
+        "lane": "In4",
+        "vtype": "Motorcycle",
+        "track_id": 2262,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 79.43,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 2237,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 79.43,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 2238,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 80.03,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 2287,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 81.13,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 2284,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 81.37,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 2280,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 81.57,
+        "lane": "Out3",
+        "vtype": "Car",
+        "track_id": 2187,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 81.93,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 2286,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 82.8,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 2323,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 83.13,
+        "lane": "In4",
+        "vtype": "Motorcycle",
+        "track_id": 2376,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 83.4,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 2254,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 83.8,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 2346,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 83.97,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 1899,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 84.3,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 2358,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 84.93,
+        "lane": "Out3",
+        "vtype": "Car",
+        "track_id": 2259,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 84.93,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 2320,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 86.13,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 2425,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 86.13,
+        "lane": "Out4",
+        "vtype": "Motorcycle",
+        "track_id": 2467,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 86.23,
+        "lane": "In4",
+        "vtype": "Car",
+        "track_id": 2141,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 87.3,
+        "lane": "Out2",
+        "vtype": "Truck",
+        "track_id": 2470,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 88.0,
+        "lane": "Out4",
+        "vtype": "Truck",
+        "track_id": 2257,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 88.23,
+        "lane": "Out2",
+        "vtype": "Motorcycle",
+        "track_id": 2510,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 88.6,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 2450,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 88.77,
+        "lane": "Out2",
+        "vtype": "Motorcycle",
+        "track_id": 2543,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 89.17,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 2480,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 89.57,
+        "lane": "Out2",
+        "vtype": "Motorcycle",
+        "track_id": 2564,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 90.2,
+        "lane": "Out2",
+        "vtype": "Motorcycle",
+        "track_id": 2599,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 90.4,
+        "lane": "Out3",
+        "vtype": "Car",
+        "track_id": 2386,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 90.63,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 2622,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 91.03,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 2476,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 91.4,
+        "lane": "Out2",
+        "vtype": "Motorcycle",
+        "track_id": 2652,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 91.6,
+        "lane": "In1",
+        "vtype": "Motorcycle",
+        "track_id": 2670,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 91.8,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 2590,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 91.93,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 2639,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 92.23,
+        "lane": "Out2",
+        "vtype": "Motorcycle",
+        "track_id": 2655,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 92.83,
+        "lane": "Out2",
+        "vtype": "Motorcycle",
+        "track_id": 2646,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 93.07,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 2610,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 93.33,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 2673,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 93.4,
+        "lane": "Out2",
+        "vtype": "Motorcycle",
+        "track_id": 2699,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 94.03,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 2671,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 94.23,
+        "lane": "Out3",
+        "vtype": "Truck",
+        "track_id": 2453,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 94.53,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 2706,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 94.73,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 2633,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 94.73,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 2756,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 95.93,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 2751,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 96.23,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 2810,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 97.63,
+        "lane": "In4",
+        "vtype": "Motorcycle",
+        "track_id": 2853,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 97.73,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 2686,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 97.77,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 2836,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 97.93,
+        "lane": "Out3",
+        "vtype": "Car",
+        "track_id": 2712,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 98.2,
+        "lane": "In3",
+        "vtype": "Truck",
+        "track_id": 2466,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 98.5,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 2829,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 99.03,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 2860,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 99.03,
+        "lane": "Out3",
+        "vtype": "Motorcycle",
+        "track_id": 2896,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 99.27,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 2894,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 99.77,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 2909,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 100.03,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 2778,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 100.13,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 2867,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 100.47,
+        "lane": "Out2",
+        "vtype": "Motorcycle",
+        "track_id": 2910,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 100.53,
+        "lane": "In1",
+        "vtype": "Motorcycle",
+        "track_id": 2976,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 100.83,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 2924,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 101.03,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 2845,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 101.23,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 2964,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 101.4,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 2843,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 101.9,
+        "lane": "Out2",
+        "vtype": "Motorcycle",
+        "track_id": 2993,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 102.23,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 3003,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 102.4,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 2987,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 102.97,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 2963,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 103.0,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 3016,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 103.0,
+        "lane": "In2",
+        "vtype": "Motorcycle",
+        "track_id": 3036,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 103.27,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 2916,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 103.57,
+        "lane": "Out3",
+        "vtype": "Car",
+        "track_id": 2905,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 103.93,
+        "lane": "Out2",
+        "vtype": "Motorcycle",
+        "track_id": 3070,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 104.5,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 3061,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 104.53,
+        "lane": "In2",
+        "vtype": "Motorcycle",
+        "track_id": 3103,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 104.93,
+        "lane": "In4",
+        "vtype": "Car",
+        "track_id": 2979,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 104.97,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 2969,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 105.2,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 2628,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 105.2,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 3110,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 106.03,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 3084,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 106.2,
+        "lane": "In4",
+        "vtype": "Truck",
+        "track_id": 3032,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 106.63,
+        "lane": "In2",
+        "vtype": "Motorcycle",
+        "track_id": 3127,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 107.1,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 3146,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 107.27,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 3093,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 107.7,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 3143,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 107.83,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 3120,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 107.9,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 3106,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 107.93,
+        "lane": "",
+        "vtype": "Car",
+        "track_id": 3207,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 108.0,
+        "lane": "In2",
+        "vtype": "Motorcycle",
+        "track_id": 3136,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 108.0,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 3208,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 108.1,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 2880,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 108.4,
+        "lane": "In1",
+        "vtype": "Motorcycle",
+        "track_id": 3209,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 108.43,
+        "lane": "Out3",
+        "vtype": "Car",
+        "track_id": 3079,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 109.23,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 3210,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 109.53,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 3119,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 109.93,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 3150,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 110.2,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 3175,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 110.4,
+        "lane": "Out4",
+        "vtype": "Motorcycle",
+        "track_id": 3249,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 110.43,
+        "lane": "In1",
+        "vtype": "Motorcycle",
+        "track_id": 3254,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 110.5,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 3239,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 111.33,
+        "lane": "In3",
+        "vtype": "Truck",
+        "track_id": 3101,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 111.33,
+        "lane": "In2",
+        "vtype": "Car",
+        "track_id": 3206,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 111.77,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 2961,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 113.17,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 3312,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 113.3,
+        "lane": "Out1",
+        "vtype": "Truck",
+        "track_id": 3297,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 113.37,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 3281,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 113.5,
+        "lane": "Out3",
+        "vtype": "Car",
+        "track_id": 3159,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 114.1,
+        "lane": "In2",
+        "vtype": "Motorcycle",
+        "track_id": 3327,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 114.2,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 3282,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 114.23,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 3298,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 114.57,
+        "lane": "",
+        "vtype": "Motorcycle",
+        "track_id": 3364,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 114.67,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 3347,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 114.7,
+        "lane": "Out1",
+        "vtype": "Car",
+        "track_id": 3338,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 114.8,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 3370,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 114.87,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 2941,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 115.0,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 3304,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 115.1,
+        "lane": "In1",
+        "vtype": "Motorcycle",
+        "track_id": 3426,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 115.37,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 3400,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 115.43,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 3440,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 115.93,
+        "lane": "In2",
+        "vtype": "Truck",
+        "track_id": 3290,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 116.1,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 3459,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 116.77,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 3510,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 116.93,
+        "lane": "In1",
+        "vtype": "Car",
+        "track_id": 3497,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 117.0,
+        "lane": "In4",
+        "vtype": "Car",
+        "track_id": 3328,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 117.23,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 3523,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 118.2,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 3581,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 118.3,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 3562,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 118.6,
+        "lane": "Out4",
+        "vtype": "Car",
+        "track_id": 3180,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 118.63,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 3576,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 118.73,
+        "lane": "Out2",
+        "vtype": "Car",
+        "track_id": 3482,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 118.93,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 3585,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 119.0,
+        "lane": "In3",
+        "vtype": "Motorcycle",
+        "track_id": 3608,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 119.17,
+        "lane": "Out3",
+        "vtype": "Motorcycle",
+        "track_id": 3617,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 119.17,
+        "lane": "Out1",
+        "vtype": "Motorcycle",
+        "track_id": 3620,
+        "direction": "outbound"
+      },
+      {
+        "time_sec": 119.43,
+        "lane": "In3",
+        "vtype": "Car",
+        "track_id": 3502,
+        "direction": "inbound"
+      },
+      {
+        "time_sec": 119.8,
+        "lane": "Out3",
+        "vtype": "Car",
+        "track_id": 3383,
+        "direction": "outbound"
+      }
+    ],
+    "per_10s": {
+      "In1": [
+        {
+          "t_start": 0.0,
+          "t_end": 10.0,
+          "count": 2,
+          "veh_per_min": 12.0,
+          "occupancy": 0.08,
+          "mean_vehicles": 0.23,
+          "density_veh_km": 10.4,
+          "mean_speed_kmh": 72.2
+        },
+        {
+          "t_start": 10.0,
+          "t_end": 20.0,
+          "count": 1,
+          "veh_per_min": 6.0,
+          "occupancy": 0.023,
+          "mean_vehicles": 0.08,
+          "density_veh_km": 3.5,
+          "mean_speed_kmh": 110.0
+        },
+        {
+          "t_start": 20.0,
+          "t_end": 30.0,
+          "count": 4,
+          "veh_per_min": 24.0,
+          "occupancy": 0.14,
+          "mean_vehicles": 0.38,
+          "density_veh_km": 17.3,
+          "mean_speed_kmh": 86.0
+        },
+        {
+          "t_start": 30.0,
+          "t_end": 40.0,
+          "count": 7,
+          "veh_per_min": 42.0,
+          "occupancy": 0.273,
+          "mean_vehicles": 0.78,
+          "density_veh_km": 35.1,
+          "mean_speed_kmh": 79.6
+        },
+        {
+          "t_start": 40.0,
+          "t_end": 50.0,
+          "count": 4,
+          "veh_per_min": 24.0,
+          "occupancy": 0.133,
+          "mean_vehicles": 0.39,
+          "density_veh_km": 17.6,
+          "mean_speed_kmh": 85.7
+        },
+        {
+          "t_start": 50.0,
+          "t_end": 60.0,
+          "count": 4,
+          "veh_per_min": 24.0,
+          "occupancy": 0.143,
+          "mean_vehicles": 0.38,
+          "density_veh_km": 17.3,
+          "mean_speed_kmh": 86.6
+        },
+        {
+          "t_start": 60.0,
+          "t_end": 70.0,
+          "count": 7,
+          "veh_per_min": 42.0,
+          "occupancy": 0.253,
+          "mean_vehicles": 0.71,
+          "density_veh_km": 32.1,
+          "mean_speed_kmh": 79.9
+        },
+        {
+          "t_start": 70.0,
+          "t_end": 80.0,
+          "count": 4,
+          "veh_per_min": 24.0,
+          "occupancy": 0.123,
+          "mean_vehicles": 0.35,
+          "density_veh_km": 15.8,
+          "mean_speed_kmh": 98.0
+        },
+        {
+          "t_start": 80.0,
+          "t_end": 90.0,
+          "count": 2,
+          "veh_per_min": 12.0,
+          "occupancy": 0.05,
+          "mean_vehicles": 0.16,
+          "density_veh_km": 7.2,
+          "mean_speed_kmh": 109.3
+        },
+        {
+          "t_start": 90.0,
+          "t_end": 100.0,
+          "count": 1,
+          "veh_per_min": 6.0,
+          "occupancy": 0.023,
+          "mean_vehicles": 0.09,
+          "density_veh_km": 4.2
+        },
+        {
+          "t_start": 100.0,
+          "t_end": 110.0,
+          "count": 3,
+          "veh_per_min": 18.0,
+          "occupancy": 0.057,
+          "mean_vehicles": 0.22,
+          "density_veh_km": 9.8,
+          "mean_speed_kmh": 98.5
+        },
+        {
+          "t_start": 110.0,
+          "t_end": 120.0,
+          "count": 3,
+          "veh_per_min": 18.0,
+          "occupancy": 0.063,
+          "mean_vehicles": 0.27,
+          "density_veh_km": 12.4
+        },
+        {
+          "t_start": 120.0,
+          "t_end": 130.0,
+          "count": 0,
+          "veh_per_min": 0.0,
+          "occupancy": 0.0,
+          "mean_vehicles": 0.0,
+          "density_veh_km": 0.0
+        }
+      ],
+      "In2": [
+        {
+          "t_start": 0.0,
+          "t_end": 10.0,
+          "count": 3,
+          "veh_per_min": 18.0,
+          "occupancy": 0.167,
+          "mean_vehicles": 0.41,
+          "density_veh_km": 18.0,
+          "mean_speed_kmh": 62.8
+        },
+        {
+          "t_start": 10.0,
+          "t_end": 20.0,
+          "count": 3,
+          "veh_per_min": 18.0,
+          "occupancy": 0.127,
+          "mean_vehicles": 0.33,
+          "density_veh_km": 14.4,
+          "mean_speed_kmh": 76.1
+        },
+        {
+          "t_start": 20.0,
+          "t_end": 30.0,
+          "count": 5,
+          "veh_per_min": 30.0,
+          "occupancy": 0.24,
+          "mean_vehicles": 0.71,
+          "density_veh_km": 31.0,
+          "mean_speed_kmh": 60.8
+        },
+        {
+          "t_start": 30.0,
+          "t_end": 40.0,
+          "count": 5,
+          "veh_per_min": 30.0,
+          "occupancy": 0.217,
+          "mean_vehicles": 0.62,
+          "density_veh_km": 26.9,
+          "mean_speed_kmh": 64.5
+        },
+        {
+          "t_start": 40.0,
+          "t_end": 50.0,
+          "count": 7,
+          "veh_per_min": 42.0,
+          "occupancy": 0.283,
+          "mean_vehicles": 0.81,
+          "density_veh_km": 35.2,
+          "mean_speed_kmh": 66.5
+        },
+        {
+          "t_start": 50.0,
+          "t_end": 60.0,
+          "count": 3,
+          "veh_per_min": 18.0,
+          "occupancy": 0.143,
+          "mean_vehicles": 0.37,
+          "density_veh_km": 16.2,
+          "mean_speed_kmh": 73.0
+        },
+        {
+          "t_start": 60.0,
+          "t_end": 70.0,
+          "count": 6,
+          "veh_per_min": 36.0,
+          "occupancy": 0.453,
+          "mean_vehicles": 1.16,
+          "density_veh_km": 50.8,
+          "mean_speed_kmh": 49.2
+        },
+        {
+          "t_start": 70.0,
+          "t_end": 80.0,
+          "count": 4,
+          "veh_per_min": 24.0,
+          "occupancy": 0.217,
+          "mean_vehicles": 0.52,
+          "density_veh_km": 22.6,
+          "mean_speed_kmh": 67.9
+        },
+        {
+          "t_start": 80.0,
+          "t_end": 90.0,
+          "count": 1,
+          "veh_per_min": 6.0,
+          "occupancy": 0.043,
+          "mean_vehicles": 0.11,
+          "density_veh_km": 4.9,
+          "mean_speed_kmh": 77.6
+        },
+        {
+          "t_start": 90.0,
+          "t_end": 100.0,
+          "count": 3,
+          "veh_per_min": 18.0,
+          "occupancy": 0.12,
+          "mean_vehicles": 0.38,
+          "density_veh_km": 16.7,
+          "mean_speed_kmh": 79.1
+        },
+        {
+          "t_start": 100.0,
+          "t_end": 110.0,
+          "count": 8,
+          "veh_per_min": 48.0,
+          "occupancy": 0.21,
+          "mean_vehicles": 0.74,
+          "density_veh_km": 32.2,
+          "mean_speed_kmh": 76.1
+        },
+        {
+          "t_start": 110.0,
+          "t_end": 120.0,
+          "count": 3,
+          "veh_per_min": 18.0,
+          "occupancy": 0.17,
+          "mean_vehicles": 0.44,
+          "density_veh_km": 19.2,
+          "mean_speed_kmh": 75.6
+        },
+        {
+          "t_start": 120.0,
+          "t_end": 130.0,
+          "count": 0,
+          "veh_per_min": 0.0,
+          "occupancy": 0.0,
+          "mean_vehicles": 1.0,
+          "density_veh_km": 43.7
+        }
+      ],
+      "In3": [
+        {
+          "t_start": 0.0,
+          "t_end": 10.0,
+          "count": 4,
+          "veh_per_min": 24.0,
+          "occupancy": 0.134,
+          "mean_vehicles": 0.39,
+          "density_veh_km": 16.4,
+          "mean_speed_kmh": 71.6
+        },
+        {
+          "t_start": 10.0,
+          "t_end": 20.0,
+          "count": 1,
+          "veh_per_min": 6.0,
+          "occupancy": 0.047,
+          "mean_vehicles": 0.14,
+          "density_veh_km": 6.0,
+          "mean_speed_kmh": 70.1
+        },
+        {
+          "t_start": 20.0,
+          "t_end": 30.0,
+          "count": 5,
+          "veh_per_min": 30.0,
+          "occupancy": 0.25,
+          "mean_vehicles": 0.78,
+          "density_veh_km": 32.9,
+          "mean_speed_kmh": 57.6
+        },
+        {
+          "t_start": 30.0,
+          "t_end": 40.0,
+          "count": 6,
+          "veh_per_min": 36.0,
+          "occupancy": 0.17,
+          "mean_vehicles": 0.65,
+          "density_veh_km": 27.4,
+          "mean_speed_kmh": 69.9
+        },
+        {
+          "t_start": 40.0,
+          "t_end": 50.0,
+          "count": 7,
+          "veh_per_min": 42.0,
+          "occupancy": 0.263,
+          "mean_vehicles": 0.96,
+          "density_veh_km": 40.4,
+          "mean_speed_kmh": 63.2
+        },
+        {
+          "t_start": 50.0,
+          "t_end": 60.0,
+          "count": 2,
+          "veh_per_min": 12.0,
+          "occupancy": 0.06,
+          "mean_vehicles": 0.22,
+          "density_veh_km": 9.4
+        },
+        {
+          "t_start": 60.0,
+          "t_end": 70.0,
+          "count": 5,
+          "veh_per_min": 30.0,
+          "occupancy": 0.207,
+          "mean_vehicles": 0.65,
+          "density_veh_km": 27.4,
+          "mean_speed_kmh": 57.6
+        },
+        {
+          "t_start": 70.0,
+          "t_end": 80.0,
+          "count": 1,
+          "veh_per_min": 6.0,
+          "occupancy": 0.037,
+          "mean_vehicles": 0.16,
+          "density_veh_km": 6.7,
+          "mean_speed_kmh": 77.7
+        },
+        {
+          "t_start": 80.0,
+          "t_end": 90.0,
+          "count": 3,
+          "veh_per_min": 18.0,
+          "occupancy": 0.093,
+          "mean_vehicles": 0.25,
+          "density_veh_km": 10.7,
+          "mean_speed_kmh": 80.7
+        },
+        {
+          "t_start": 90.0,
+          "t_end": 100.0,
+          "count": 1,
+          "veh_per_min": 6.0,
+          "occupancy": 0.17,
+          "mean_vehicles": 0.21,
+          "density_veh_km": 8.7,
+          "mean_speed_kmh": 44.6
+        },
+        {
+          "t_start": 100.0,
+          "t_end": 110.0,
+          "count": 6,
+          "veh_per_min": 36.0,
+          "occupancy": 0.26,
+          "mean_vehicles": 0.78,
+          "density_veh_km": 33.0,
+          "mean_speed_kmh": 63.5
+        },
+        {
+          "t_start": 110.0,
+          "t_end": 120.0,
+          "count": 9,
+          "veh_per_min": 54.0,
+          "occupancy": 0.31,
+          "mean_vehicles": 1.16,
+          "density_veh_km": 48.9,
+          "mean_speed_kmh": 68.8
+        },
+        {
+          "t_start": 120.0,
+          "t_end": 130.0,
+          "count": 0,
+          "veh_per_min": 0.0,
+          "occupancy": 0.0,
+          "mean_vehicles": 1.0,
+          "density_veh_km": 42.2
+        }
+      ],
+      "In4": [
+        {
+          "t_start": 0.0,
+          "t_end": 10.0,
+          "count": 3,
+          "veh_per_min": 18.0,
+          "occupancy": 0.144,
+          "mean_vehicles": 0.43,
+          "density_veh_km": 17.6,
+          "mean_speed_kmh": 62.7
+        },
+        {
+          "t_start": 10.0,
+          "t_end": 20.0,
+          "count": 1,
+          "veh_per_min": 6.0,
+          "occupancy": 0.057,
+          "mean_vehicles": 0.23,
+          "density_veh_km": 9.5,
+          "mean_speed_kmh": 50.7
+        },
+        {
+          "t_start": 20.0,
+          "t_end": 30.0,
+          "count": 4,
+          "veh_per_min": 24.0,
+          "occupancy": 0.343,
+          "mean_vehicles": 0.89,
+          "density_veh_km": 36.1,
+          "mean_speed_kmh": 41.9
+        },
+        {
+          "t_start": 30.0,
+          "t_end": 40.0,
+          "count": 4,
+          "veh_per_min": 24.0,
+          "occupancy": 0.137,
+          "mean_vehicles": 0.56,
+          "density_veh_km": 22.7,
+          "mean_speed_kmh": 63.6
+        },
+        {
+          "t_start": 40.0,
+          "t_end": 50.0,
+          "count": 2,
+          "veh_per_min": 12.0,
+          "occupancy": 0.093,
+          "mean_vehicles": 0.29,
+          "density_veh_km": 11.8,
+          "mean_speed_kmh": 67.8
+        },
+        {
+          "t_start": 50.0,
+          "t_end": 60.0,
+          "count": 2,
+          "veh_per_min": 12.0,
+          "occupancy": 0.087,
+          "mean_vehicles": 0.29,
+          "density_veh_km": 11.9,
+          "mean_speed_kmh": 65.9
+        },
+        {
+          "t_start": 60.0,
+          "t_end": 70.0,
+          "count": 3,
+          "veh_per_min": 18.0,
+          "occupancy": 0.147,
+          "mean_vehicles": 0.48,
+          "density_veh_km": 19.3,
+          "mean_speed_kmh": 63.5
+        },
+        {
+          "t_start": 70.0,
+          "t_end": 80.0,
+          "count": 2,
+          "veh_per_min": 12.0,
+          "occupancy": 0.063,
+          "mean_vehicles": 0.27,
+          "density_veh_km": 11.1,
+          "mean_speed_kmh": 67.0
+        },
+        {
+          "t_start": 80.0,
+          "t_end": 90.0,
+          "count": 2,
+          "veh_per_min": 12.0,
+          "occupancy": 0.1,
+          "mean_vehicles": 0.34,
+          "density_veh_km": 13.9,
+          "mean_speed_kmh": 52.5
+        },
+        {
+          "t_start": 90.0,
+          "t_end": 100.0,
+          "count": 1,
+          "veh_per_min": 6.0,
+          "occupancy": 0.033,
+          "mean_vehicles": 0.17,
+          "density_veh_km": 7.0
+        },
+        {
+          "t_start": 100.0,
+          "t_end": 110.0,
+          "count": 2,
+          "veh_per_min": 12.0,
+          "occupancy": 0.247,
+          "mean_vehicles": 0.47,
+          "density_veh_km": 19.1,
+          "mean_speed_kmh": 45.1
+        },
+        {
+          "t_start": 110.0,
+          "t_end": 120.0,
+          "count": 1,
+          "veh_per_min": 6.0,
+          "occupancy": 0.053,
+          "mean_vehicles": 0.15,
+          "density_veh_km": 6.0,
+          "mean_speed_kmh": 67.5
+        },
+        {
+          "t_start": 120.0,
+          "t_end": 130.0,
+          "count": 0,
+          "veh_per_min": 0.0,
+          "occupancy": 0.0,
+          "mean_vehicles": 0.0,
+          "density_veh_km": 0.0
+        }
+      ],
+      "Out1": [
+        {
+          "t_start": 0.0,
+          "t_end": 10.0,
+          "count": 11,
+          "veh_per_min": 66.0,
+          "occupancy": 0.823,
+          "mean_vehicles": 3.4,
+          "density_veh_km": 163.9,
+          "mean_speed_kmh": 20.9
+        },
+        {
+          "t_start": 10.0,
+          "t_end": 20.0,
+          "count": 3,
+          "veh_per_min": 18.0,
+          "occupancy": 0.777,
+          "mean_vehicles": 3.36,
+          "density_veh_km": 161.8,
+          "mean_speed_kmh": 7.5
+        },
+        {
+          "t_start": 20.0,
+          "t_end": 30.0,
+          "count": 8,
+          "veh_per_min": 48.0,
+          "occupancy": 0.743,
+          "mean_vehicles": 3.0,
+          "density_veh_km": 144.6,
+          "mean_speed_kmh": 19.6
+        },
+        {
+          "t_start": 30.0,
+          "t_end": 40.0,
+          "count": 7,
+          "veh_per_min": 42.0,
+          "occupancy": 0.687,
+          "mean_vehicles": 2.45,
+          "density_veh_km": 117.9,
+          "mean_speed_kmh": 17.6
+        },
+        {
+          "t_start": 40.0,
+          "t_end": 50.0,
+          "count": 3,
+          "veh_per_min": 18.0,
+          "occupancy": 0.687,
+          "mean_vehicles": 3.0,
+          "density_veh_km": 144.6,
+          "mean_speed_kmh": 9.6
+        },
+        {
+          "t_start": 50.0,
+          "t_end": 60.0,
+          "count": 7,
+          "veh_per_min": 42.0,
+          "occupancy": 0.7,
+          "mean_vehicles": 2.15,
+          "density_veh_km": 103.6,
+          "mean_speed_kmh": 25.5
+        },
+        {
+          "t_start": 60.0,
+          "t_end": 70.0,
+          "count": 8,
+          "veh_per_min": 48.0,
+          "occupancy": 0.657,
+          "mean_vehicles": 2.15,
+          "density_veh_km": 103.5,
+          "mean_speed_kmh": 20.1
+        },
+        {
+          "t_start": 70.0,
+          "t_end": 80.0,
+          "count": 6,
+          "veh_per_min": 36.0,
+          "occupancy": 0.567,
+          "mean_vehicles": 1.86,
+          "density_veh_km": 89.6,
+          "mean_speed_kmh": 26.0
+        },
+        {
+          "t_start": 80.0,
+          "t_end": 90.0,
+          "count": 3,
+          "veh_per_min": 18.0,
+          "occupancy": 0.27,
+          "mean_vehicles": 1.18,
+          "density_veh_km": 56.9,
+          "mean_speed_kmh": 28.0
+        },
+        {
+          "t_start": 90.0,
+          "t_end": 100.0,
+          "count": 10,
+          "veh_per_min": 60.0,
+          "occupancy": 0.413,
+          "mean_vehicles": 2.03,
+          "density_veh_km": 98.0,
+          "mean_speed_kmh": 39.0
+        },
+        {
+          "t_start": 100.0,
+          "t_end": 110.0,
+          "count": 8,
+          "veh_per_min": 48.0,
+          "occupancy": 0.263,
+          "mean_vehicles": 1.32,
+          "density_veh_km": 63.6,
+          "mean_speed_kmh": 41.5
+        },
+        {
+          "t_start": 110.0,
+          "t_end": 120.0,
+          "count": 11,
+          "veh_per_min": 66.0,
+          "occupancy": 0.42,
+          "mean_vehicles": 1.83,
+          "density_veh_km": 88.2,
+          "mean_speed_kmh": 41.3
+        },
+        {
+          "t_start": 120.0,
+          "t_end": 130.0,
+          "count": 0,
+          "veh_per_min": 0.0,
+          "occupancy": 0.0,
+          "mean_vehicles": 0.0,
+          "density_veh_km": 0.0
+        }
+      ],
+      "Out2": [
+        {
+          "t_start": 0.0,
+          "t_end": 10.0,
+          "count": 3,
+          "veh_per_min": 18.0,
+          "occupancy": 0.592,
+          "mean_vehicles": 2.56,
+          "density_veh_km": 127.9,
+          "mean_speed_kmh": 13.1
+        },
+        {
+          "t_start": 10.0,
+          "t_end": 20.0,
+          "count": 2,
+          "veh_per_min": 12.0,
+          "occupancy": 0.753,
+          "mean_vehicles": 2.37,
+          "density_veh_km": 118.8,
+          "mean_speed_kmh": 5.6
+        },
+        {
+          "t_start": 20.0,
+          "t_end": 30.0,
+          "count": 1,
+          "veh_per_min": 6.0,
+          "occupancy": 0.793,
+          "mean_vehicles": 3.37,
+          "density_veh_km": 168.5,
+          "mean_speed_kmh": 2.1
+        },
+        {
+          "t_start": 30.0,
+          "t_end": 40.0,
+          "count": 0,
+          "veh_per_min": 0.0,
+          "occupancy": 1.0,
+          "mean_vehicles": 3.03,
+          "density_veh_km": 151.8
+        },
+        {
+          "t_start": 40.0,
+          "t_end": 50.0,
+          "count": 2,
+          "veh_per_min": 12.0,
+          "occupancy": 0.54,
+          "mean_vehicles": 2.1,
+          "density_veh_km": 105.3,
+          "mean_speed_kmh": 2.1
+        },
+        {
+          "t_start": 50.0,
+          "t_end": 60.0,
+          "count": 4,
+          "veh_per_min": 24.0,
+          "occupancy": 0.667,
+          "mean_vehicles": 1.96,
+          "density_veh_km": 97.9,
+          "mean_speed_kmh": 17.3
+        },
+        {
+          "t_start": 60.0,
+          "t_end": 70.0,
+          "count": 5,
+          "veh_per_min": 30.0,
+          "occupancy": 0.437,
+          "mean_vehicles": 1.53,
+          "density_veh_km": 76.8,
+          "mean_speed_kmh": 24.2
+        },
+        {
+          "t_start": 70.0,
+          "t_end": 80.0,
+          "count": 4,
+          "veh_per_min": 24.0,
+          "occupancy": 0.43,
+          "mean_vehicles": 1.26,
+          "density_veh_km": 63.2,
+          "mean_speed_kmh": 23.6
+        },
+        {
+          "t_start": 80.0,
+          "t_end": 90.0,
+          "count": 7,
+          "veh_per_min": 42.0,
+          "occupancy": 0.543,
+          "mean_vehicles": 1.77,
+          "density_veh_km": 88.8,
+          "mean_speed_kmh": 31.5
+        },
+        {
+          "t_start": 90.0,
+          "t_end": 100.0,
+          "count": 9,
+          "veh_per_min": 54.0,
+          "occupancy": 0.6,
+          "mean_vehicles": 1.85,
+          "density_veh_km": 92.6,
+          "mean_speed_kmh": 31.4
+        },
+        {
+          "t_start": 100.0,
+          "t_end": 110.0,
+          "count": 7,
+          "veh_per_min": 42.0,
+          "occupancy": 0.58,
+          "mean_vehicles": 1.6,
+          "density_veh_km": 80.3,
+          "mean_speed_kmh": 23.1
+        },
+        {
+          "t_start": 110.0,
+          "t_end": 120.0,
+          "count": 4,
+          "veh_per_min": 24.0,
+          "occupancy": 0.423,
+          "mean_vehicles": 1.54,
+          "density_veh_km": 76.9,
+          "mean_speed_kmh": 18.2
+        },
+        {
+          "t_start": 120.0,
+          "t_end": 130.0,
+          "count": 0,
+          "veh_per_min": 0.0,
+          "occupancy": 1.0,
+          "mean_vehicles": 2.0,
+          "density_veh_km": 100.1
+        }
+      ],
+      "Out3": [
+        {
+          "t_start": 0.0,
+          "t_end": 10.0,
+          "count": 1,
+          "veh_per_min": 6.0,
+          "occupancy": 0.639,
+          "mean_vehicles": 2.01,
+          "density_veh_km": 104.3,
+          "mean_speed_kmh": 1.7
+        },
+        {
+          "t_start": 10.0,
+          "t_end": 20.0,
+          "count": 1,
+          "veh_per_min": 6.0,
+          "occupancy": 1.0,
+          "mean_vehicles": 2.89,
+          "density_veh_km": 149.8,
+          "mean_speed_kmh": 1.6
+        },
+        {
+          "t_start": 20.0,
+          "t_end": 30.0,
+          "count": 0,
+          "veh_per_min": 0.0,
+          "occupancy": 1.0,
+          "mean_vehicles": 3.15,
+          "density_veh_km": 163.1
+        },
+        {
+          "t_start": 30.0,
+          "t_end": 40.0,
+          "count": 0,
+          "veh_per_min": 0.0,
+          "occupancy": 1.0,
+          "mean_vehicles": 2.77,
+          "density_veh_km": 143.6
+        },
+        {
+          "t_start": 40.0,
+          "t_end": 50.0,
+          "count": 1,
+          "veh_per_min": 6.0,
+          "occupancy": 0.753,
+          "mean_vehicles": 2.26,
+          "density_veh_km": 117.0,
+          "mean_speed_kmh": 1.8
+        },
+        {
+          "t_start": 50.0,
+          "t_end": 60.0,
+          "count": 1,
+          "veh_per_min": 6.0,
+          "occupancy": 1.0,
+          "mean_vehicles": 2.74,
+          "density_veh_km": 141.7,
+          "mean_speed_kmh": 4.6
+        },
+        {
+          "t_start": 60.0,
+          "t_end": 70.0,
+          "count": 2,
+          "veh_per_min": 12.0,
+          "occupancy": 0.707,
+          "mean_vehicles": 2.27,
+          "density_veh_km": 117.5,
+          "mean_speed_kmh": 6.8
+        },
+        {
+          "t_start": 70.0,
+          "t_end": 80.0,
+          "count": 1,
+          "veh_per_min": 6.0,
+          "occupancy": 0.4,
+          "mean_vehicles": 1.61,
+          "density_veh_km": 83.5,
+          "mean_speed_kmh": 8.9
+        },
+        {
+          "t_start": 80.0,
+          "t_end": 90.0,
+          "count": 2,
+          "veh_per_min": 12.0,
+          "occupancy": 0.66,
+          "mean_vehicles": 1.98,
+          "density_veh_km": 102.5,
+          "mean_speed_kmh": 9.7
+        },
+        {
+          "t_start": 90.0,
+          "t_end": 100.0,
+          "count": 4,
+          "veh_per_min": 24.0,
+          "occupancy": 0.633,
+          "mean_vehicles": 1.71,
+          "density_veh_km": 88.7,
+          "mean_speed_kmh": 11.4
+        },
+        {
+          "t_start": 100.0,
+          "t_end": 110.0,
+          "count": 2,
+          "veh_per_min": 12.0,
+          "occupancy": 0.503,
+          "mean_vehicles": 1.64,
+          "density_veh_km": 84.8,
+          "mean_speed_kmh": 6.2
+        },
+        {
+          "t_start": 110.0,
+          "t_end": 120.0,
+          "count": 3,
+          "veh_per_min": 18.0,
+          "occupancy": 0.76,
+          "mean_vehicles": 2.29,
+          "density_veh_km": 118.6,
+          "mean_speed_kmh": 5.0
+        },
+        {
+          "t_start": 120.0,
+          "t_end": 130.0,
+          "count": 0,
+          "veh_per_min": 0.0,
+          "occupancy": 0.0,
+          "mean_vehicles": 3.0,
+          "density_veh_km": 155.3
+        }
+      ],
+      "Out4": [
+        {
+          "t_start": 0.0,
+          "t_end": 10.0,
+          "count": 0,
+          "veh_per_min": 0.0,
+          "occupancy": 1.0,
+          "mean_vehicles": 3.69,
+          "density_veh_km": 239.5
+        },
+        {
+          "t_start": 10.0,
+          "t_end": 20.0,
+          "count": 0,
+          "veh_per_min": 0.0,
+          "occupancy": 1.0,
+          "mean_vehicles": 3.15,
+          "density_veh_km": 204.9
+        },
+        {
+          "t_start": 20.0,
+          "t_end": 30.0,
+          "count": 4,
+          "veh_per_min": 24.0,
+          "occupancy": 0.79,
+          "mean_vehicles": 3.56,
+          "density_veh_km": 231.3,
+          "mean_speed_kmh": 13.4
+        },
+        {
+          "t_start": 30.0,
+          "t_end": 40.0,
+          "count": 4,
+          "veh_per_min": 24.0,
+          "occupancy": 0.62,
+          "mean_vehicles": 3.32,
+          "density_veh_km": 215.7,
+          "mean_speed_kmh": 13.3
+        },
+        {
+          "t_start": 40.0,
+          "t_end": 50.0,
+          "count": 3,
+          "veh_per_min": 18.0,
+          "occupancy": 0.657,
+          "mean_vehicles": 3.26,
+          "density_veh_km": 212.0,
+          "mean_speed_kmh": 12.4
+        },
+        {
+          "t_start": 50.0,
+          "t_end": 60.0,
+          "count": 3,
+          "veh_per_min": 18.0,
+          "occupancy": 1.0,
+          "mean_vehicles": 4.46,
+          "density_veh_km": 289.8,
+          "mean_speed_kmh": 8.4
+        },
+        {
+          "t_start": 60.0,
+          "t_end": 70.0,
+          "count": 1,
+          "veh_per_min": 6.0,
+          "occupancy": 1.0,
+          "mean_vehicles": 4.32,
+          "density_veh_km": 280.7,
+          "mean_speed_kmh": 0.9
+        },
+        {
+          "t_start": 70.0,
+          "t_end": 80.0,
+          "count": 3,
+          "veh_per_min": 18.0,
+          "occupancy": 1.0,
+          "mean_vehicles": 4.48,
+          "density_veh_km": 291.3,
+          "mean_speed_kmh": 2.3
+        },
+        {
+          "t_start": 80.0,
+          "t_end": 90.0,
+          "count": 3,
+          "veh_per_min": 18.0,
+          "occupancy": 1.0,
+          "mean_vehicles": 4.47,
+          "density_veh_km": 290.7,
+          "mean_speed_kmh": 3.0
+        },
+        {
+          "t_start": 90.0,
+          "t_end": 100.0,
+          "count": 1,
+          "veh_per_min": 6.0,
+          "occupancy": 0.907,
+          "mean_vehicles": 3.65,
+          "density_veh_km": 236.9,
+          "mean_speed_kmh": 4.2
+        },
+        {
+          "t_start": 100.0,
+          "t_end": 110.0,
+          "count": 3,
+          "veh_per_min": 18.0,
+          "occupancy": 1.0,
+          "mean_vehicles": 4.07,
+          "density_veh_km": 264.2,
+          "mean_speed_kmh": 5.1
+        },
+        {
+          "t_start": 110.0,
+          "t_end": 120.0,
+          "count": 5,
+          "veh_per_min": 30.0,
+          "occupancy": 1.0,
+          "mean_vehicles": 4.43,
+          "density_veh_km": 287.6,
+          "mean_speed_kmh": 9.0
+        },
+        {
+          "t_start": 120.0,
+          "t_end": 130.0,
+          "count": 0,
+          "veh_per_min": 0.0,
+          "occupancy": 1.0,
+          "mean_vehicles": 4.0,
+          "density_veh_km": 259.9
+        }
+      ]
+    },
+    "events": [
+      {
+        "code": "WRONG_WAY",
+        "severity": "violation",
+        "time_sec": 8.6,
+        "lane": "In1",
+        "from_lane": "",
+        "message": "Moving against the traffic in In1 (Inbound)",
+        "vtype": "Car",
+        "track_id": -1,
+        "plate": "XWW 1001",
+        "simulated": true
+      },
+      {
+        "code": "LANE_CHANGE",
+        "severity": "info",
+        "time_sec": 13.3,
+        "lane": "Out3",
+        "from_lane": "Out4",
+        "message": "Lane change Out4 → Out3",
+        "vtype": "Truck",
+        "track_id": 324,
+        "plate": "",
+        "simulated": false
+      },
+      {
+        "code": "SPEEDING",
+        "severity": "violation",
+        "time_sec": 16.63,
+        "lane": "In2",
+        "from_lane": "",
+        "message": "114 ± 15 km/h in a 80 km/h zone",
+        "vtype": "Car",
+        "track_id": -2,
+        "plate": "XSP 4004",
+        "simulated": true,
+        "value": 113.56,
+        "error_1sigma": 7.34
+      },
+      {
+        "code": "SOLID_LINE",
+        "severity": "violation",
+        "time_sec": 19.67,
+        "lane": "In4",
+        "from_lane": "",
+        "message": "Crossed the solid line: inbound edge (hatched area)",
+        "vtype": "Car",
+        "track_id": -3,
+        "plate": "XSL 2002",
+        "simulated": true
+      },
+      {
+        "code": "LANE_CHANGE",
+        "severity": "info",
+        "time_sec": 46.43,
+        "lane": "Out3",
+        "from_lane": "Out4",
+        "message": "Lane change Out4 → Out3",
+        "vtype": "Car",
+        "track_id": 1268,
+        "plate": "",
+        "simulated": false
+      },
+      {
+        "code": "LANE_CHANGE",
+        "severity": "info",
+        "time_sec": 58.5,
+        "lane": "Out3",
+        "from_lane": "Out4",
+        "message": "Lane change Out4 → Out3",
+        "vtype": "Car",
+        "track_id": 1633,
+        "plate": "",
+        "simulated": false
+      },
+      {
+        "code": "LANE_CHANGE",
+        "severity": "info",
+        "time_sec": 68.07,
+        "lane": "In2",
+        "from_lane": "In3",
+        "message": "Lane change In3 → In2",
+        "vtype": "Car",
+        "track_id": 1892,
+        "plate": "",
+        "simulated": false
+      },
+      {
+        "code": "LANE_CHANGE",
+        "severity": "info",
+        "time_sec": 87.47,
+        "lane": "Out1",
+        "from_lane": "Out2",
+        "message": "Lane change Out2 → Out1",
+        "vtype": "Truck",
+        "track_id": 2470,
+        "plate": "",
+        "simulated": false
+      },
+      {
+        "code": "TAILGATING",
+        "severity": "violation",
+        "time_sec": 88.73,
+        "lane": "In1",
+        "from_lane": "",
+        "message": "0.55 s behind #-5 at 89 km/h (≈14 m, front to front)",
+        "vtype": "Car",
+        "track_id": -6,
+        "plate": "XTG 5006",
+        "simulated": true,
+        "value": 0.55
+      },
+      {
+        "code": "LANE_CHANGE",
+        "severity": "info",
+        "time_sec": 90.4,
+        "lane": "Out3",
+        "from_lane": "Out4",
+        "message": "Lane change Out4 → Out3",
+        "vtype": "Truck",
+        "track_id": 2453,
+        "plate": "",
+        "simulated": false
+      },
+      {
+        "code": "STOPPED",
+        "severity": "hazard",
+        "time_sec": 88.5,
+        "lane": "In3",
+        "from_lane": "",
+        "message": "Stopped in In3 for 5 s while traffic flows",
+        "vtype": "Car",
+        "track_id": -4,
+        "plate": "XST 3003",
+        "simulated": true,
+        "value": 5.0
+      },
+      {
+        "code": "LANE_CHANGE",
+        "severity": "info",
+        "time_sec": 111.8,
+        "lane": "In1",
+        "from_lane": "In2",
+        "message": "Lane change In2 → In1",
+        "vtype": "Car",
+        "track_id": 3206,
+        "plate": "",
+        "simulated": false
+      }
+    ],
+    "withheld_violations": {
+      "SPEEDING": 7,
+      "TAILGATING": 3
+    },
+    "withheld_note": "violations of camera vehicles on public footage: counted, not attributed",
+    "calibration": {
+      "note": "speeds in km/h with 1-sigma error; scale from lane width 3.5 m + measured dash cycle",
+      "speed_zone_y": [
+        0.66,
+        0.92
+      ]
+    }
+  }
+}

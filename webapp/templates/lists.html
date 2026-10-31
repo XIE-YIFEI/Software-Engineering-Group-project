@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row" style="margin-bottom:12px"><span class="seg" id="tabs"><button type="button" data-l="watch" class="on">Watch list</button><button type="button" data-l="blacklist">Blacklist</button></span>
+  <span class="muted" style="font-size:12px">New imports and uploads are matched against the active lists: a watch-list hit raises a medium alert, a blacklist hit a high one. The vehicle registry beside them is SIMULATED.</span></div>
+<section class="card" id="pane"><div class="empty">Loading…</div></section>
+{% endblock %}
+{% block scripts %}<script src="/static/js/pages/lists.js"></script>{% endblock %}

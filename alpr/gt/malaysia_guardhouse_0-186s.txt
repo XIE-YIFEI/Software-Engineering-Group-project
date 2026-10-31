@@ -1,0 +1,15 @@
+# Hand-labelled plates, data/videos/malaysia_guardhouse_lpr.mp4, whole clip (0-186 s), profile
+# malaysia_guardhouse. Second scene, labelled before the pipeline was ever run on this video.
+# Guardhouse barrier gate (YouTube "License plate recognition system for guard house", LEAF SMART
+# COMMUNITY, youtube.com/watch?v=eNIGPl-W2II). The vendor's own plate overlay (top-left) is cropped away.
+# Gate lane: vehicles stop at the barrier, plate read by eye at the closest view.
+JKM810      # red lorry (0-38 s)
+JPP3473     # silver Ford Ranger pickup (42-80 s)
+JMT8577     # white lorry, two-row plate (82-128 s)
+JME5737     # orange Toyota Hiace van (134-164 s)
+JMG4910     # white lorry "WMS" (168-186 s)
+# Far lane (vehicles passing behind the guards): plates are 40-60 px wide and oblique, a human cannot
+# verify them, so they are '?' (a prediction within 2 edits is neither a hit nor a false positive).
+? JSY380    # dark car (~94 s), best guess
+? JF2525    # car (~21 s), best guess
+? WTL525    # dark car (~72 s), best guess

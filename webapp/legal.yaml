@@ -1,0 +1,58 @@
+# Road Transport Act 1987 (Act 333) sections cited in evidence packs. Every entry was checked on 2026-10-23 against
+# BOTH official texts below: the section number, its title and the paraphrased content. Penalties are NOT quoted:
+# they have been amended since 2013 (e.g. Act A1618 of 2020 changed the penalties of sections 41-45).
+# Alerts with no entry (WATCHLIST, BANNED_AT_SITE) get no legal reference. Only Act 333 is cited; other laws may
+# also apply. A citation says which provision the alert relates to; it is not a finding that an offence happened.
+
+checked: "2026-10-23"
+sources:
+  - title: "Laws of Malaysia, Act 333 Road Transport Act 1987, online version of updated text of reprint, as at 1 February 2013 (Attorney General's Chambers)"
+    publisher: "Ministry of Transport Malaysia"
+    url: "https://www.mot.gov.my/en/Documents/Act%20333%20-%20Road%20Transport%20Act%201987.pdf"
+  - title: "Undang-Undang Malaysia, Akta 333 Akta Pengangkutan Jalan 1987, versi dalam talian teks cetakan semula yang kemas kini, sebagaimana pada 15 Oktober 2023 (Jabatan Peguam Negara; last amended by Act A1684)"
+    publisher: "Road Transport Department Malaysia (JPJ)"
+    url: "https://www.jpj.gov.my/wp-content/uploads/2025/04/Akta-333_15-Okt-2023.pdf"
+note: "Both are updated texts that state they are not authentic reprints. The cited section numbers and titles are the same in both."
+
+sections:
+  s7:   {section: "7(1)", title: "Registration of motor vehicles and owners", title_ms: "Pendaftaran kenderaan motor dan pemunya",
+         text: "No person may possess or use a motor vehicle unless it is registered under Part II of the Act."}
+  s14:  {section: "14(1)", title: "Display of registration number", title_ms: "Memperagakan nombor pendaftaran",
+         text: "The registration number assigned to a vehicle must be displayed and illuminated on the number plate in the manner prescribed by rules made under the Act."}
+  s15:  {section: "15(1)", title: "Motor vehicle licences", title_ms: "Lesen kenderaan motor",
+         text: "No person may use, or cause or permit to be used, a motor vehicle for which no motor vehicle licence granted under the Act is in force."}
+  s23:  {section: "23(1)", title: "Other offences in connection with registration and licensing of motor vehicles",
+         title_ms: "Kesalahan lain berkaitan dengan pendaftaran dan pelesenan kenderaan motor",
+         text: "Using a motor vehicle while no motor vehicle licence is in force for it, or causing or permitting it to be so used, is an offence."}
+  s40:  {section: "40(1)", title: "Exceeding speed limit", title_ms: "Melebihi had laju",
+         text: "Driving a motor vehicle at a speed exceeding any speed limit imposed for it under the powers of the Act is an offence (limits are set under section 69)."}
+  s42:  {section: "42(1)", title: "Reckless and dangerous driving", title_ms: "Memandu secara melulu dan membahayakan",
+         text: "Driving on a road recklessly, or at a speed or in a manner that is dangerous to the public having regard to all the circumstances, is an offence."}
+  s43:  {section: "43(1)", title: "Careless and inconsiderate driving", title_ms: "Memandu dengan tidak cermat dan tidak bertimbang rasa",
+         text: "Driving on a road without due care and attention, or without reasonable consideration for other persons using the road, is an offence."}
+  s48:  {section: "48(1)", title: "Obstruction by vehicle on road", title_ms: "Galangan disebabkan kenderaan di jalan",
+         text: "A driver who causes or permits a vehicle to remain at rest on a road where it is likely to cause danger, obstruction or undue inconvenience to other road users commits an offence."}
+  s51:  {section: "51(1)", title: "Taking motor vehicle without consent of registered owner", title_ms: "Mengambil kenderaan motor tanpa izin pemunya berdaftar",
+         text: "Taking and driving away a motor vehicle without the owner's consent or other lawful authority is an offence."}
+  s79:  {section: "79(2)", title: "Penalties for neglect of traffic directions and signs", title_ms: "Penalti kerana mengabaikan arahan dan isyarat lalu lintas",
+         text: "A driver who fails or neglects to conform to the indication of a lawfully placed traffic sign commits an offence. Under section 67, traffic signs include signs, marks or devices provided on or near a road (road markings such as solid lines)."}
+  s108b: {section: "108(3)(b)", title: "False statement", title_ms: "Pernyataan palsu",
+          text: "Making or possessing a mark, plate or document so closely resembling one required by the Act as to be calculated to deceive is an offence."}
+  s108e: {section: "108(3)(e)", title: "False statement", title_ms: "Pernyataan palsu",
+          text: "Exhibiting on a motor vehicle an identification mark or plate that has been altered or tampered with, or an imitation of one required by the Act, is an offence."}
+  s108f: {section: "108(3)(f)", title: "False statement", title_ms: "Pernyataan palsu",
+          text: "Exhibiting on a motor vehicle a licence, identification mark, plate or document that does not belong to that vehicle is an offence."}
+
+# alert code -> sections (in this order) and a note shown with them
+alerts:
+  EXPIRED:        {sections: [s15, s23], note: "Applies only if the road-tax (motor vehicle licence) record is real and current; the demo registry is SIMULATED."}
+  UNMATCHED:      {sections: [s7], note: "Not in the SIMULATED registry. This does not mean a real vehicle is unregistered."}
+  ILLEGAL_FORMAT: {sections: [s14, s108e], note: "The plate text does not follow a legal Malaysian format; the prescribed form of number plates is set by rules under the Act."}
+  TYPE_MISMATCH:  {sections: [s108f], note: "The plate is registered to a different kind of vehicle, so it may not belong to the vehicle seen."}
+  DUPLICATE:      {sections: [s108f, s108b], note: "A cloned plate: the same plate on two vehicles, or seen too far apart to drive in time."}
+  BLACKLIST:      {sections: [s51], note: "A reported-stolen vehicle; the report itself is handled under other laws, which are not cited here."}
+  SPEEDING:       {sections: [s40], note: "The 80 km/h limit of the demo camera is an assumed value, not the posted limit."}
+  SOLID_LINE:     {sections: [s79]}
+  WRONG_WAY:      {sections: [s79, s42], note: "Whether the manner of driving was dangerous is for a court to decide."}
+  TAILGATING:     {sections: [s43], note: "There is no fixed minimum headway in the Act; whether this was careless driving is for a court to decide."}
+  STOPPED:        {sections: [s48]}

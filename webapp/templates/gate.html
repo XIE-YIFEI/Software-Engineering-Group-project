@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="gate">
+  <div class="stack">
+    <div id="player"></div>
+    <div class="row between"><span class="muted" id="runnote"></span>
+      <form id="manual" class="row"><input name="plate" placeholder="Type a plate the camera missed" style="width:220px"><button class="btn" type="submit">Check</button></form></div>
+    <section class="card"><div class="row between"><h2>Inside now (visitors)</h2><span class="muted" id="overstaynote"></span></div><div id="inside"><div class="empty">Loading…</div></div>
+      <p class="faint" style="font-size:12px;margin:8px 0 0">The gate camera reads plates on the entry lane only: exit-lane plates are too small and oblique to read. Mark exits with <b>Exited</b>.</p></section>
+  </div>
+  <div class="stack">
+    <section class="idcard" id="card"><div class="empty">Waiting for a vehicle… press play.</div></section>
+    <section class="card"><h2>Recent decisions</h2><div id="recent"></div></section>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/pages/gate.js"></script>{% endblock %}

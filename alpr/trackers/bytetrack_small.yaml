@@ -1,0 +1,11 @@
+# ByteTrack for a high, wide view with small, fast vehicles (lane camera, alpr profile malaysia_selayang_lanes).
+# Motorcycles at the count line are ~25 px wide and their detection score flickers around the default
+# thresholds, so the default tracker restarted them every few frames (1/19 counted on the dev window,
+# 0-40 s). A looser IoU match (0.9 = IoU > 0.1) and new tracks from 0.2: 12/19, no extra counts.
+tracker_type: bytetrack
+track_high_thresh: 0.25
+track_low_thresh: 0.1
+new_track_thresh: 0.2
+track_buffer: 60
+match_thresh: 0.9
+fuse_score: True

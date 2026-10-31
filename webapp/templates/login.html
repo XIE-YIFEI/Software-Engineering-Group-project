@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · SECS Vision</title>
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<div class="login">
+  <div class="card">
+    <div class="brand"><div class="brand-mark">SV</div><div><b>SECS Vision</b><small class="muted">Malaysian ALPR &amp; traffic monitoring</small></div></div>
+    <form method="post" action="/login">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label class="field">Username<input name="username" autocomplete="username" required autofocus></label>
+      <label class="field">Password<input name="password" type="password" autocomplete="current-password" required></label>
+      {% if error %}<div class="notice warn">{{ error }}</div>{% endif %}
+      <button class="btn primary" type="submit">Sign in</button>
+    </form>
+    <p class="muted" style="font-size:12px;margin:16px 0 0">Course project demo. Test accounts: <code>webapp/seed/demo_users.yaml</code>
+      (local demo only). The vehicle registry is SIMULATED.</p>
+  </div>
+</div>
+</body>
+</html>

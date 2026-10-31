@@ -1,0 +1,21 @@
+# What the automated tests import (GitHub Actions, .github/workflows/ci.yml), pinned to the versions of the project
+# venv in which they pass (TEAM_GUIDE.md section 1). torch / torchvision are installed first from the CPU-only wheel
+# index (see ci.yml), so CI downloads no CUDA libraries. The full system needs requirements.txt; this file is only the
+# light test set (no OCR, OpenVINO or download tools). Keep it ASCII-only.
+numpy==1.26.4
+opencv-python==4.11.0.86
+pyyaml==6.0.3
+pillow==13.0.0
+ultralytics==8.4.171
+scipy==1.13.1
+statsmodels==0.15.0
+patsy==1.0.3
+lightgbm==4.7.0
+packaging==25.0
+fastapi==0.161.1
+pydantic==2.14.1
+uvicorn==0.54.0
+jinja2==3.1.6
+python-multipart==0.0.32
+httpx==0.28.1
+fpdf2==2.8.9

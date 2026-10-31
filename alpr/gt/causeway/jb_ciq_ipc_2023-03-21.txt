@@ -1,0 +1,45 @@
+# Hand counts, camera C (jb_ciq_ipc_2023-03-21, youtube.com/watch?v=uMBo-qx9M2U), zones of the "To CIQ"
+# carriageway. Each line: keyframe time (camera clock)  zone  vehicles whose wheels are inside the zone.
+# Counted by eye on the enlarged zone crops, without looking at the pipeline's numbers. In the morning queue
+# the cars stand bumper to bumper and the parapet hides their lower half: uncertainty about +-2 per zone.
+# At night the zones are empty or nearly so (headlight streaks of a single car are counted as one vehicle).
+03:30:01 TC1 0
+03:30:01 TC2 1
+03:30:01 TC3 1
+03:30:01 TC4 0
+04:59:58 TC1 0
+04:59:58 TC2 1
+04:59:58 TC3 1
+04:59:58 TC4 0
+05:59:58 TC1 1
+05:59:58 TC2 1
+05:59:58 TC3 1
+05:59:58 TC4 1
+06:39:58 TC1 2
+06:39:58 TC2 2
+06:39:58 TC3 3
+06:39:58 TC4 2
+06:59:58 TC1 0
+06:59:58 TC2 0
+06:59:58 TC3 1
+06:59:58 TC4 1
+07:30:01 TC1 13
+07:30:01 TC2 9
+07:30:01 TC3 12
+07:30:01 TC4 4
+08:15:00 TC1 15
+08:15:00 TC2 6
+08:15:00 TC3 13
+08:15:00 TC4 4
+08:59:58 TC1 18
+08:59:58 TC2 12
+08:59:58 TC3 13
+08:59:58 TC4 12
+09:30:01 TC1 18
+09:30:01 TC2 11
+09:30:01 TC3 13
+09:30:01 TC4 11
+09:59:58 TC1 17
+09:59:58 TC2 13
+09:59:58 TC3 14
+09:59:58 TC4 15

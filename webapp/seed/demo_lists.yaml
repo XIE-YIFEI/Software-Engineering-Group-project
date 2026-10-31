@@ -1,0 +1,36 @@
+# SIMULATED demo lists, visitor passes and gate events (python -m webapp.importer --demo).
+# All plates are fictitious X-series plates (no Malaysian state uses X), except the one resident entry for the
+# real gate plate JPP 3473, which is a neutral status. Times are relative to the import, in hours:minutes
+# ("-6:12" = 6 h 12 min before the import).
+
+site: demo-condo
+
+residents:
+  - {plate: "JPP 3473", unit: "A-03-2", label: "Resident vehicle"}
+
+banned:
+  - {plate: "XBN 4321", reason: "SIMULATED: banned by the management office (repeated trespass)"}
+
+passes:
+  - {key: pass-xvp3003, plate: "XVP 3003", unit: "A-12-1", label: "Guest", from: "-1:00", to: "+8:00"}
+  - {key: pass-xva5120, plate: "XVA 5120", unit: "B-07-3", label: "Delivery", from: "-7:00", to: "-2:00"}
+
+access_events:
+  - {key: acc-1, plate: "XVA 5120", identity: visitor_pre, pass: pass-xva5120, decision: allowed, direction: entry,
+     at: "-6:12", unit: "B-07-3", note: "Delivery to B-07-3"}
+  - {key: acc-2, plate: "XVC 6011", identity: visitor_unregistered, decision: allowed, direction: entry,
+     at: "-2:30", unit: "C-02-5", note: "Contractor; unit called and confirmed"}
+  - {key: acc-3, plate: "XVE 7702", identity: visitor_unregistered, decision: allowed, direction: entry,
+     at: "-5:05", unit: "A-08-1", note: "Guest"}
+  - {key: acc-4, plate: "XVE 7702", identity: visitor_unregistered, decision: exited, direction: exit,
+     at: "-3:10", unit: "A-08-1", note: "Exit recorded by the guard"}
+
+# Synthetic arrivals added to the gate demo run at these source seconds (window 66-96 s): no vehicle in the video.
+gate_arrivals:
+  - {at_sec: 82.0, plate: "XVP 3003", vtype: Car}      # pre-registered visitor, pass valid now -> teal
+  - {at_sec: 90.0, plate: "XBN 4321", vtype: Car}      # on the site's ban list -> red
+
+police:
+  watch:
+    - {plate: "XSE 5005", reason: "SIMULATED: vehicle of interest (no registration record)"}
+  blacklist: []

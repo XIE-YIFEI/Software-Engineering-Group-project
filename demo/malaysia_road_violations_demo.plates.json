@@ -1,0 +1,519 @@
+{
+  "source": "data/videos/malaysia_road_violations_SIMULATED.mp4",
+  "profile": "malaysia_road_violations",
+  "fps": 30.0,
+  "frames": 4652,
+  "window_sec": [
+    0.0,
+    155.07
+  ],
+  "plates": [
+    {
+      "plate": "WHT 2598",
+      "compact": "WHT2598",
+      "confidence": 0.999,
+      "votes": 16,
+      "status": "CONFIRMED",
+      "valid_format": true,
+      "vtype": "Car",
+      "region": "Kuala Lumpur",
+      "track_ids": [
+        1
+      ],
+      "first_frame": 1,
+      "last_frame": 93,
+      "first_sec": 0.03,
+      "last_sec": 3.1,
+      "alerts": []
+    },
+    {
+      "plate": "XSA 1001",
+      "compact": "XSA1001",
+      "confidence": 0.7411,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "valid_format": true,
+      "vtype": "Car",
+      "region": "Unknown",
+      "track_ids": [
+        4
+      ],
+      "first_frame": 14,
+      "last_frame": 469,
+      "first_sec": 0.47,
+      "last_sec": 15.63,
+      "alerts": [
+        {
+          "code": "EXPIRED",
+          "severity": "medium",
+          "message": "road tax expired 2026-03-31 (197 days ago)"
+        },
+        {
+          "code": "TYPE_MISMATCH",
+          "severity": "medium",
+          "message": "registered Motorcycle, seen as Car"
+        }
+      ]
+    },
+    {
+      "plate": "XSE 5005",
+      "compact": "XSE5005",
+      "confidence": 0.7402,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "valid_format": true,
+      "vtype": "Car",
+      "region": "Unknown",
+      "track_ids": [
+        52,
+        76
+      ],
+      "first_frame": 326,
+      "last_frame": 639,
+      "first_sec": 10.87,
+      "last_sec": 21.3,
+      "alerts": [
+        {
+          "code": "UNMATCHED",
+          "severity": "medium",
+          "message": "no registration record"
+        }
+      ]
+    },
+    {
+      "plate": "WA 2135 K",
+      "compact": "WA2135K",
+      "confidence": 0.9727,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "valid_format": true,
+      "vtype": "Car",
+      "region": "Kuala Lumpur",
+      "track_ids": [
+        74,
+        100
+      ],
+      "first_frame": 488,
+      "last_frame": 765,
+      "first_sec": 16.27,
+      "last_sec": 25.5,
+      "alerts": []
+    },
+    {
+      "plate": "XSD 4004",
+      "compact": "XSD4004",
+      "confidence": 0.7409,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "valid_format": true,
+      "vtype": "Car",
+      "region": "Unknown",
+      "track_ids": [
+        105,
+        118
+      ],
+      "first_frame": 705,
+      "last_frame": 1139,
+      "first_sec": 23.5,
+      "last_sec": 37.97,
+      "alerts": [
+        {
+          "code": "DUPLICATE",
+          "severity": "high",
+          "message": "seen at Johor Bahru (SIM) 07:45, 293 km away (1141 km/h needed): cloned plate?"
+        }
+      ]
+    },
+    {
+      "plate": "BMW 319",
+      "compact": "BMW319",
+      "confidence": 0.9976,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "valid_format": true,
+      "vtype": "Car",
+      "region": "Selangor",
+      "track_ids": [
+        129
+      ],
+      "first_frame": 1297,
+      "last_frame": 1864,
+      "first_sec": 43.23,
+      "last_sec": 62.13,
+      "alerts": []
+    },
+    {
+      "plate": "VCK 9720",
+      "compact": "VCK9720",
+      "confidence": 0.9677,
+      "votes": 34,
+      "status": "CONFIRMED",
+      "valid_format": true,
+      "vtype": "Truck",
+      "region": "Kuala Lumpur",
+      "track_ids": [
+        181
+      ],
+      "first_frame": 1748,
+      "last_frame": 2235,
+      "first_sec": 58.27,
+      "last_sec": 74.5,
+      "alerts": []
+    },
+    {
+      "plate": "V 1108",
+      "compact": "V1108",
+      "confidence": 0.9824,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "valid_format": true,
+      "vtype": "Truck",
+      "region": "Kuala Lumpur",
+      "track_ids": [
+        183
+      ],
+      "first_frame": 1760,
+      "last_frame": 2120,
+      "first_sec": 58.67,
+      "last_sec": 70.67,
+      "alerts": []
+    },
+    {
+      "plate": "WXY 12345",
+      "compact": "WXY12345",
+      "confidence": 0.9899,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "valid_format": false,
+      "vtype": "Car",
+      "region": "",
+      "track_ids": [
+        211,
+        221
+      ],
+      "first_frame": 2114,
+      "last_frame": 2474,
+      "first_sec": 70.47,
+      "last_sec": 82.47,
+      "alerts": [
+        {
+          "code": "ILLEGAL_FORMAT",
+          "severity": "medium",
+          "message": "'WXY12345' is not a legal Malaysian plate format"
+        }
+      ]
+    },
+    {
+      "plate": "WSQ 3973",
+      "compact": "WSQ3973",
+      "confidence": 0.904,
+      "votes": 34,
+      "status": "CONFIRMED",
+      "valid_format": true,
+      "vtype": "Car",
+      "region": "Kuala Lumpur",
+      "track_ids": [
+        241
+      ],
+      "first_frame": 2467,
+      "last_frame": 2660,
+      "first_sec": 82.23,
+      "last_sec": 88.67,
+      "alerts": []
+    },
+    {
+      "plate": "WTQ 9809",
+      "compact": "WTQ9809",
+      "confidence": 0.9924,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "valid_format": true,
+      "vtype": "Car",
+      "region": "Kuala Lumpur",
+      "track_ids": [
+        263
+      ],
+      "first_frame": 2913,
+      "last_frame": 3362,
+      "first_sec": 97.1,
+      "last_sec": 112.07,
+      "alerts": []
+    },
+    {
+      "plate": "XSB 2002",
+      "compact": "XSB2002",
+      "confidence": 0.7411,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "valid_format": true,
+      "vtype": "Car",
+      "region": "Unknown",
+      "track_ids": [
+        289
+      ],
+      "first_frame": 3207,
+      "last_frame": 3470,
+      "first_sec": 106.9,
+      "last_sec": 115.67,
+      "alerts": [
+        {
+          "code": "BLACKLIST",
+          "severity": "high",
+          "message": "SIMULATED: reported stolen"
+        }
+      ]
+    },
+    {
+      "plate": "WRS 7607",
+      "compact": "WRS7607",
+      "confidence": 0.9836,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "valid_format": true,
+      "vtype": "Car",
+      "region": "Kuala Lumpur",
+      "track_ids": [
+        359
+      ],
+      "first_frame": 3425,
+      "last_frame": 3598,
+      "first_sec": 114.17,
+      "last_sec": 119.93,
+      "alerts": []
+    },
+    {
+      "plate": "XSG 7007",
+      "compact": "XSG7007",
+      "confidence": 0.7411,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "valid_format": true,
+      "vtype": "Car",
+      "region": "Unknown",
+      "track_ids": [
+        376
+      ],
+      "first_frame": 3531,
+      "last_frame": 3806,
+      "first_sec": 117.7,
+      "last_sec": 126.87,
+      "alerts": [
+        {
+          "code": "DUPLICATE",
+          "severity": "high",
+          "message": "same plate on vehicle #414 in view: cloned plate?"
+        }
+      ]
+    },
+    {
+      "plate": "WA 9299 M",
+      "compact": "WA9299M",
+      "confidence": 0.92,
+      "votes": 11,
+      "status": "CONFIRMED",
+      "valid_format": true,
+      "vtype": "Car",
+      "region": "Kuala Lumpur",
+      "track_ids": [
+        405
+      ],
+      "first_frame": 3578,
+      "last_frame": 3658,
+      "first_sec": 119.27,
+      "last_sec": 121.93,
+      "alerts": []
+    },
+    {
+      "plate": "XSG 7007",
+      "compact": "XSG7007",
+      "confidence": 0.7411,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "valid_format": true,
+      "vtype": "Car",
+      "region": "Unknown",
+      "track_ids": [
+        414
+      ],
+      "first_frame": 3601,
+      "last_frame": 3875,
+      "first_sec": 120.03,
+      "last_sec": 129.17,
+      "alerts": [
+        {
+          "code": "DUPLICATE",
+          "severity": "high",
+          "message": "same plate on vehicle #376 in view: cloned plate?"
+        }
+      ]
+    },
+    {
+      "plate": "WB 7605 J",
+      "compact": "WB7605J",
+      "confidence": 0.9926,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "valid_format": true,
+      "vtype": "Car",
+      "region": "Kuala Lumpur",
+      "track_ids": [
+        420
+      ],
+      "first_frame": 3660,
+      "last_frame": 3930,
+      "first_sec": 122.0,
+      "last_sec": 131.0,
+      "alerts": []
+    },
+    {
+      "plate": "VN 1683",
+      "compact": "VN1683",
+      "confidence": 0.9986,
+      "votes": 40,
+      "status": "CONFIRMED",
+      "valid_format": true,
+      "vtype": "Car",
+      "region": "Kuala Lumpur",
+      "track_ids": [
+        435
+      ],
+      "first_frame": 3796,
+      "last_frame": 4099,
+      "first_sec": 126.53,
+      "last_sec": 136.63,
+      "alerts": []
+    },
+    {
+      "plate": "VCV 1555",
+      "compact": "VCV1555",
+      "confidence": 0.5328,
+      "votes": 40,
+      "status": "TENTATIVE",
+      "valid_format": true,
+      "vtype": "Car",
+      "region": "Kuala Lumpur",
+      "track_ids": [
+        465
+      ],
+      "first_frame": 4071,
+      "last_frame": 4564,
+      "first_sec": 135.7,
+      "last_sec": 152.13,
+      "alerts": []
+    }
+  ],
+  "flow": {
+    "count_line_y": 0.62,
+    "total": 19,
+    "by_type": {
+      "Car": 17,
+      "Motorcycle": 1,
+      "Truck": 1
+    },
+    "per_10s": [
+      {
+        "t_start": 0.0,
+        "t_end": 10.0,
+        "total": 0
+      },
+      {
+        "t_start": 10.0,
+        "t_end": 20.0,
+        "total": 3,
+        "Car": 2,
+        "Motorcycle": 1
+      },
+      {
+        "t_start": 20.0,
+        "t_end": 30.0,
+        "total": 1,
+        "Car": 1
+      },
+      {
+        "t_start": 30.0,
+        "t_end": 40.0,
+        "total": 1,
+        "Car": 1
+      },
+      {
+        "t_start": 40.0,
+        "t_end": 50.0,
+        "total": 0
+      },
+      {
+        "t_start": 50.0,
+        "t_end": 60.0,
+        "total": 1,
+        "Car": 1
+      },
+      {
+        "t_start": 60.0,
+        "t_end": 70.0,
+        "total": 2,
+        "Car": 1,
+        "Truck": 1
+      },
+      {
+        "t_start": 70.0,
+        "t_end": 80.0,
+        "total": 1,
+        "Car": 1
+      },
+      {
+        "t_start": 80.0,
+        "t_end": 90.0,
+        "total": 1,
+        "Car": 1
+      },
+      {
+        "t_start": 90.0,
+        "t_end": 100.0,
+        "total": 0
+      },
+      {
+        "t_start": 100.0,
+        "t_end": 110.0,
+        "total": 1,
+        "Car": 1
+      },
+      {
+        "t_start": 110.0,
+        "t_end": 120.0,
+        "total": 2,
+        "Car": 2
+      },
+      {
+        "t_start": 120.0,
+        "t_end": 130.0,
+        "total": 5,
+        "Car": 5
+      },
+      {
+        "t_start": 130.0,
+        "t_end": 140.0,
+        "total": 0
+      },
+      {
+        "t_start": 140.0,
+        "t_end": 150.0,
+        "total": 1,
+        "Car": 1
+      }
+    ]
+  },
+  "registry": {
+    "path": "data/registry/demo_registry.db",
+    "rules": [
+      "BLACKLIST",
+      "DUPLICATE",
+      "EXPIRED",
+      "ILLEGAL_FORMAT",
+      "TYPE_MISMATCH",
+      "UNMATCHED"
+    ],
+    "disclaimer": "SIMULATED registry for a course demo - not real registration data. Fictitious vehicles use plates starting with X; real plates from alpr/gt are neutral placeholders (status ok, no dates).",
+    "alerts": 8,
+    "simulated_alerts": 0
+  },
+  "simulated_events": []
+}

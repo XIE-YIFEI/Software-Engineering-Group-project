@@ -1,0 +1,197 @@
+# Hand-counted per-lane crossings of the count line (y = 0.78), data/videos/malaysia_selayang_overhead.mp4
+# (YouTube KGHhxfkqypg, 15:00-17:00), profile malaysia_selayang_lanes. Counted by eye on slit-scan images
+# (python -m alpr.lane_eval --slitscan ...: the count-line row of every 2nd frame stacked over time), before
+# the pipeline was run on the clip; borderline cases checked on the video frames (3.9, 62.4, 98.4, 99.2,
+# 111.5, 114.6 s).
+#
+# Scope: the INBOUND carriageway (towards the camera, free flow), all vehicles incl. motorcycles.
+# The outbound carriageway is not hand-counted: it is a stop-and-go queue in which trucks stand on the
+# line for many seconds, Out4 merges with the exit lane to the slip road, and ~1.5 motorcycles/s filter
+# along the Out1|Out2 line (no lane to assign them to).
+#
+# time = the vehicle's front bumper reaching the line (top of its slit-scan block); lane = lane of the
+# centre of the front bumper. A vehicle on a lane line is given the lane its front centre is in.
+# Columns: time_sec  lane  type (car | moto | truck | bus)
+0.95  In4  car
+1.15  In2  car
+2.00  In3  truck     # pickup / lorry with brown load
+3.70  In1  car
+3.75  In2  truck     # yellow-cab lorry
+4.95  In3  moto
+5.95  In1  car
+5.95  In4  car
+6.05  In3  moto
+6.15  In2  car
+6.20  In2  moto
+6.55  In3  moto
+7.40  In4  car
+10.75 In2  car
+11.55 In4  car
+13.15 In2  car
+16.35 In4  moto
+16.70 In1  car
+17.20 In3  moto
+18.90 In3  car
+19.60 In2  car
+21.00 In1  car
+21.35 In3  car
+21.45 In4  truck
+21.85 In1  car
+22.70 In2  car
+23.15 In1  car
+23.55 In2  car
+23.65 In4  car
+23.75 In3  car
+24.80 In2  car
+25.35 In2  moto
+25.40 In3  car
+25.40 In4  car
+26.60 In4  moto
+27.05 In3  car
+27.35 In2  car
+27.50 In2  moto
+27.90 In2  moto
+28.10 In3  car
+29.00 In1  car
+30.72 In4  car
+30.95 In2  car
+31.17 In1  car
+31.60 In3  moto
+32.40 In1  car
+32.70 In2  car
+33.60 In1  moto
+34.15 In4  moto
+34.75 In3  moto
+35.20 In1  car
+35.30 In3  car
+36.10 In2  car
+36.20 In1  car
+36.63 In3  car
+36.98 In1  car
+37.10 In3  moto
+37.20 In2  car       # beige van
+37.60 In4  moto
+37.80 In1  car
+38.52 In1  car
+38.75 In2  moto
+39.20 In3  moto
+39.40 In4  car       # large white vehicle
+39.75 In3  moto
+40.30 In4  moto
+40.75 In2  car
+41.20 In3  car
+41.85 In2  car
+42.60 In1  car
+43.03 In2  car
+43.80 In2  car
+44.93 In3  car
+45.00 In1  car
+45.00 In2  moto
+45.92 In1  car
+46.30 In3  car
+46.35 In2  moto
+46.60 In4  car
+46.83 In3  moto
+47.90 In3  car
+48.70 In1  car
+49.10 In3  moto
+49.30 In4  moto
+49.60 In2  car
+49.67 In3  car
+50.90 In4  car
+51.55 In1  car
+52.80 In4  car
+52.90 In2  car
+53.55 In1  car
+55.70 In1  car
+55.80 In3  moto
+56.40 In2  car
+57.60 In2  car
+58.70 In3  moto
+58.83 In1  car
+60.48 In4  car
+60.98 In2  car       # white van
+61.28 In1  car
+61.81 In2  car
+62.17 In4  car       # on the In3|In4 line, front centre just inside In4 (frame 62.35 s)
+62.58 In1  car
+62.81 In2  car
+63.80 In4  car
+64.05 In3  car
+64.09 In2  car
+65.78 In1  car
+66.05 In3  car
+66.39 In2  car
+66.58 In1  moto
+66.87 In3  moto
+67.31 In1  car
+67.60 In2  car
+68.00 In4  car
+68.19 In1  car
+68.22 In3  moto
+68.72 In2  car
+69.31 In1  car
+70.55 In2  car
+71.19 In1  car
+71.74 In2  car
+72.80 In3  car
+72.91 In4  car
+73.53 In1  car
+74.14 In2  car
+75.76 In1  car
+76.17 In2  moto
+76.94 In2  car
+77.33 In1  car
+79.29 In4  moto
+80.00 In3  moto
+81.09 In1  car
+83.09 In4  moto
+83.39 In3  car
+83.76 In1  car
+84.89 In3  car
+86.17 In4  truck
+88.55 In2  car
+91.00 In2  car
+91.58 In1  moto
+93.03 In2  car
+94.63 In1  moto
+94.72 In2  car
+97.59 In4  moto
+98.17 In3  truck     # articulated truck, on the In3|In4 line (one vehicle: cab + trailer, frames 98.4 / 99.2 s)
+99.95 In2  car
+100.47 In1 moto
+101.02 In3 car
+101.37 In2 car
+102.20 In3 moto
+102.94 In2 moto
+102.97 In3 moto
+104.52 In2 moto
+104.92 In4 car
+104.94 In3 car
+106.17 In4 truck
+106.61 In2 moto
+107.26 In2 car
+107.67 In3 moto
+107.87 In1 car
+107.94 In3 moto
+107.98 In2 moto
+108.39 In1 moto
+109.87 In2 car
+110.28 In3 moto
+110.41 In1 moto
+111.28 In3 truck     # white box lorry
+111.31 In2 car       # on the In1|In2 line, front centre just inside In2 (frame 111.45 s)
+113.17 In3 moto
+114.09 In2 moto
+114.14 In3 car
+114.50 In4 moto      # (frame 114.55 s: a 2nd motorcycle rides in the hatched area, not a lane)
+114.63 In3 moto
+114.78 In2 moto
+115.09 In1 moto
+115.39 In3 moto
+115.92 In2 truck     # white lorry
+116.91 In1 car
+116.98 In4 car
+118.17 In3 moto
+118.98 In3 moto
+119.39 In3 car

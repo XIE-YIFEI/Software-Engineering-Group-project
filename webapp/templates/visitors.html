@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row" style="margin-bottom:12px"><span class="seg" id="tabs">
+  <button type="button" data-t="passes" class="on">Visitor passes</button><button type="button" data-t="inside">Inside &amp; overstays</button>
+  <button type="button" data-t="resident">Residents</button><button type="button" data-t="banned">Banned at this site</button></span>
+  <span class="muted" style="font-size:12px">Only plates, unit numbers and short labels are stored: no names or IC numbers.</span></div>
+<section class="card" id="pane"><div class="empty">Loading…</div></section>
+{% endblock %}
+{% block scripts %}<script src="/static/js/pages/visitors.js"></script>{% endblock %}

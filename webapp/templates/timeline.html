@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="split">
+  <section class="card" id="chain" data-plate="{{ plate }}"><div class="empty">Loading…</div></section>
+  <aside class="stack sticky"><div id="player"></div><section class="card"><h2>How the check works</h2>
+    <p class="muted" style="margin:0">Consecutive sightings are compared: the distance between the two cameras divided by the time between
+    the sightings gives the speed the vehicle would have needed. Faster than 250 km/h is impossible, so the same plate is probably on two
+    vehicles (a cloned plate). Sightings at the same site (under 2 km apart) never count. The rule is <code>alpr.registry.check_travel</code>,
+    the same one the pipeline uses.</p></section></aside>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/pages/timeline.js"></script>{% endblock %}
