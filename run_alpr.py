@@ -38,11 +38,13 @@ def main(argv=None) -> int:
                     help="vehicles, flow and lanes only (no plate detection / OCR)")
     ap.add_argument("--evidence", dest="evidence_dir", metavar="DIR",
                     help="save each logged plate's best crop + its full frame to DIR (paths in the JSON)")
+    ap.add_argument("--uncertain-dir", dest="uncertain_dir", metavar="DIR",
+                    help="write diagnostic-only results for unconfirmed OCR tracks to DIR")
     args = ap.parse_args(argv)
 
     cfg = load_config(args.profile, args.config)
     for name in ("source", "start_sec", "duration", "out", "plate_model", "plate_model_fallback", "frame_step",
-                 "model_backend", "openvino_device", "headless", "read_plates", "evidence_dir"):
+                 "model_backend", "openvino_device", "headless", "read_plates", "evidence_dir", "uncertain_dir"):
         value = getattr(args, name)
         if value is not None:
             setattr(cfg, name, value)

@@ -34,6 +34,9 @@ jobs:
 
       - name: Unit tests of the recognition code (alpr)
         run: python alpr/tests/test_alpr.py
+      - name: FR03 uncertain-plate diagnostic tests
+        run: python -m unittest discover -s alpr/tests -p test_diagnostics.py -v
+
 
       - name: Web system tests (FastAPI TestClient)
         run: python webapp/tests/test_web.py
