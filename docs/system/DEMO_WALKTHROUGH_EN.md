@@ -147,5 +147,12 @@ exits come from the guard's **Exited** button.
 | How good is the forecast? | MAE 0.077 (fill) on day A, warnings 17 and 3 minutes before the two onsets; validated on two days of one road only. |
 | Is it real time? | CPU only: 10.5 FPS for the roadside scene (TEAM_GUIDE section 11); the GPU is the next step. Live RTSP cameras are designed for but not built. |
 | Can someone change the audit log? | The database refuses updates and deletes, and each row carries the hash of the previous one; the admin can verify the chain. |
-| Could an AI assistant use this? | Yes: every feature is a typed service function that takes the user, so an assistant would inherit the same permissions, masking and audit (next task). |
+| Is there an AI assistant? | Yes, SECS Copilot: it answers through the same service functions, with the user's role, so it inherits the permissions, masking and audit; changes are cards the user confirms. Its demo script is in [COPILOT_EN.md](COPILOT_EN.md), section 12. |
 | Where are the limits? | [Requirements, section 8](REQUIREMENTS_EN.md) and [test report, section 11](TEST_PLAN_REPORT_EN.md). |
+
+## 6. SECS Copilot (the AI assistant)
+
+The assistant's own defence script (the traffic manager hitting the masking guard and revealing with a reason, the
+guard registering a visitor through an action card, the police officer tracing a cloned plate with citation chips,
+"AI explain" and the case summary in the evidence pack, the daily review) is in [COPILOT_EN.md](COPILOT_EN.md),
+section 12. Without an API key the panel runs in offline mode (quick questions, labelled "Offline: templates, not AI").

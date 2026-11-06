@@ -30,7 +30,7 @@ CI，这一步补上了：
 | 系统管理员 | `admin` | 用户、数据导入、上传、数据保留期限、审计日志 |
 
 本步不实现、但在设计上预留（第 11 节）：实时 RTSP 摄像头、在浏览器里画车道、不含车牌的公众拥堵展望页、
-推送通知，以及生成式 / 智能体 AI 助手（下一个任务）。
+推送通知。生成式 / 智能体 AI 助手已在下一步实现：SECS Copilot，见 [COPILOT_ZH.md](COPILOT_ZH.md)。
 
 ## 2. 组件与数据流
 
@@ -161,7 +161,7 @@ JSON 接口都在 `/api/v1` 下，OpenAPI 文档在 `/docs`。用会话 Cookie �
 共 59 个接口（54 个路径），分 12 组（认证、总览、车牌、告警、交通、预测、门岗、名单、任务、报表、管理、媒体）；
 每个接口及允许调用的角色列在 [API_ZH.md](API_ZH.md)，可交互的参考文档在 `/docs` 自动生成。
 
-**服务函数**（API 包装的就是它们，将来 AI 助手也调用它们），例如
+**服务函数**（API 包装的就是它们，AI 助手 SECS Copilot 也把它们当作工具调用），例如
 `plates.search(conn, user, SightingQuery) -> Page[SightingOut]`、`plates.timeline_of(conn, user, plate) -> Timeline`、
 `alerts.transition(conn, user, alert_id, to, note, corrected_plate) -> AlertDetail`、
 `forecast.state(conn, user, day, at) -> ForecastState`、
@@ -565,7 +565,8 @@ WSL / Docker，无法直接运行 Linux，所以 GitHub 上的第一次运行就
   的配置档格式。
 - **不含车牌的公众拥堵展望页：** 预测服务只返回路段级的汇总数据，公众页面不需要新的数据访问。
 - **推送通知：** 所有告警都由同一个函数创建，那里就是唯一的挂接点。
-- **AI 助手：** 服务函数即工具（第 4 节），以当前登录用户的身份执行。
+- **AI 助手：** 已实现为 SECS Copilot（[COPILOT_ZH.md](COPILOT_ZH.md)）：服务函数就是它的工具（第 4 节），以当前登录用户
+  的身份调用；写操作是需要用户确认的卡片。
 
 ## 12. 实现顺序
 

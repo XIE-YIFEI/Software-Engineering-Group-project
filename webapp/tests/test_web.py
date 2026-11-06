@@ -506,6 +506,7 @@ def test_requirements_cover_every_third_party_import_of_the_web_system():
             m = re.match(r"\s*(?:from\s+(\w+)[\w.]*\s+import\s|import\s+(\w+))", ln)
             mod = m and (m.group(1) or m.group(2))
             if (mod and mod not in sys.stdlib_module_names and mod not in ("webapp", "alpr", "__future__")
+                    and not (root / "webapp" / "tests" / f"{mod}.py").exists()          # a local test module
                     and dist.get(mod, mod).lower() not in listed):
                 missing.add(f"{mod} ({path.name})")
     assert not missing, f"imported but not in requirements.txt: {sorted(missing)}"

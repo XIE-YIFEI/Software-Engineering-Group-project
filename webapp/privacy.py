@@ -146,6 +146,7 @@ class PurgeReport:
     reveals: int = 0
     sessions: int = 0
     files: int = 0
+    copilot: int = 0                    # assistant conversations, actions, reviews, image checks, old usage rows
     cutoffs: Dict[str, str] = field(default_factory=dict)
 
 
@@ -179,9 +180,12 @@ def purge(conn: sqlite3.Connection, media_dir: Path, corrections_dir: Path, user
     files = [media_dir / p for v in victims for p in (v["crop_path"], v["scene_path"]) if p]
     files += [corrections_dir / c["crop_path"] for c in old_corr if c["crop_path"]]
     rep.files = sum(1 for f in files if f.exists())
+    from .copilot import store as copilot_store
+    rep.copilot = sum(copilot_store.purge(conn, dry_run=True).values())
     if dry_run:
         return rep
     with db.transaction(conn):
+        copilot_store.purge(conn, dry_run=False)
         conn.executemany("DELETE FROM sightings WHERE id = ?", [(i,) for i in ids])   # alerts cascade
         conn.execute("DELETE FROM access_events WHERE at < ?", (cut["retention_access_days"],))
         conn.execute("DELETE FROM corrections WHERE created_at < ?", (cut["retention_corrections_days"],))
@@ -206,4 +210,5 @@ def purge(conn: sqlite3.Connection, media_dir: Path, corrections_dir: Path, user
 def purge_summary(rep: PurgeReport) -> List[str]:
     verb = "would delete" if rep.dry_run else "deleted"
     return [f"{verb} {rep.sightings} sightings ({rep.alerts} closed alerts with them), {rep.access_events} access-log "
-            f"entries, {rep.corrections} correction-pool items, {rep.audit_rows} audit rows, {rep.files} files"]
+            f"entries, {rep.corrections} correction-pool items, {rep.audit_rows} audit rows, {rep.files} files, "
+            f"{rep.copilot} assistant records"]

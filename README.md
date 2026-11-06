@@ -5,11 +5,15 @@
 > **[ALPR_INTRODUCTION.md](ALPR_INTRODUCTION.md)** (English + Chinese) and the team guide **[TEAM_GUIDE_EN.md](TEAM_GUIDE_EN.md)**.
 > **Web system** (database, API, pages for traffic police, guardhouse security and traffic managers):
 > **[docs/system/](docs/system/README.md)** — requirements, architecture, database, API, test report, demo walkthrough.
+> **AI assistant SECS Copilot** (Claude: answers through the system's own functions, action cards, "AI explain",
+> generated reports, offline mode): **[docs/system/COPILOT_EN.md](docs/system/COPILOT_EN.md)**.
 >
 > **马来西亚车牌识别与交通流量监控（小组项目）** — 图片与 CCTV 视频车牌识别、车牌核验、车流与车道级监控、高峰拥堵预测，
 > 中英文介绍见 **[ALPR_INTRODUCTION.md](ALPR_INTRODUCTION.md)**，团队使用说明见 [TEAM_GUIDE.md](TEAM_GUIDE.md)。
 > **网页系统**（数据库、API、交警 / 门岗保安 / 交通管理人员的页面）见 **[docs/system/](docs/system/README.md)**：
 > 需求、架构、数据库、API、测试报告、演示走查。
+> **AI 助手 SECS Copilot**（Claude：通过系统自己的函数回答、操作卡片、“AI 解读”、生成报告、离线模式）见
+> **[docs/system/COPILOT_ZH.md](docs/system/COPILOT_ZH.md)**。
 >
 > The rest of this README describes the earlier PPE / AR-glasses project this repository started from.
 

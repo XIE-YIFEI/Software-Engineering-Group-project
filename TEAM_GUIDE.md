@@ -831,11 +831,67 @@ venv 里的 torch 2.3.1 是 CPU 版，而 RTX 50 系列需要 CUDA 12.8 版的 t
 ### 13.7 CI 和依赖
 
 `.github/workflows/ci.yml`：每次 push 和 pull request 都在 Ubuntu + Python 3.12 上安装 CPU 版 torch 和
-`requirements-ci.txt`（固定版本），运行 86 个 `alpr` 测试和 22 个网页测试；README 顶部有 CI 徽章。网页系统的依赖
-（fastapi、pydantic、uvicorn、jinja2、python-multipart、httpx、fpdf2）已加入 `requirements.txt`。
+`requirements-ci.txt`（固定版本），运行 86 个 `alpr` 测试和 22 个网页测试（第 14 节起还有 19 个 AI 助手测试）；README
+顶部有 CI 徽章。网页系统的依赖（fastapi、pydantic、uvicorn、jinja2、python-multipart、httpx、fpdf2，以及 AI 助手用的
+anthropic 和 httpx2）已加入 `requirements.txt`。
 
 ### 13.8 局限
 
 登记库是模拟的；只用 CPU 时约 10 FPS；违规只用虚构车牌演示；推演是在所述假设下的估计；证据包不是官方文件；本地部署
 （SQLite、127.0.0.1）；Linux 只在 CI 上测试。详见[需求规格说明](docs/system/REQUIREMENTS_ZH.md)第 8 节和
 [测试报告](docs/system/TEST_PLAN_REPORT_ZH.md)第 11 节。
+
+## 14. AI 助手 SECS Copilot（2026-10-27）
+
+课程要求的生成式 / 智能体 AI 部分。完整的中英文文档（设计、工具、提示词、隐私、费用、测试与评测、答辩演示脚本）见
+[docs/system/COPILOT_ZH.md](docs/system/COPILOT_ZH.md)。一句话原则：**模型负责理解、解释和撰写；所有数字和车牌都来自系统
+自己的函数。**
+
+### 14.1 运行
+
+API 密钥由我们自己提供，放在启动服务器的那个终端的环境变量里，**绝不写进任何文件、绝不提交**：
+
+```powershell
+$env:ANTHROPIC_API_KEY = "<密钥>"; .venv\Scripts\python -m webapp
+```
+
+没有密钥（或没有网络、当日预算用完）时自动进入离线模式：面板仍可用，快捷问题用固定模板回答，并标注“离线：模板回答，
+非 AI 生成”。默认模型 Claude Opus 5.5，管理员可在“设置 → SECS Copilot”切换为 Sonnet 5.5 / Haiku 5.5、调整 effort、开启
+图像检查（默认关闭）；每用户每小时 30 次、每天总预算 5 美元，也在“设置”里改。
+
+### 14.2 能做什么
+
+| 功能 | 谁用 | 在哪里 |
+|---|---|---|
+| 助手面板：中 / 英 / 马来文提问，流式回答，显示工具步骤；提到的记录都是可点击的引用标签（编号 · 车牌（按角色打码）· 时间） | 所有角色 | 每页顶部的“✦ Copilot”按钮；Copilot 页面 |
+| 操作卡片：访客通行证、名单条目、告警状态、显示完整车牌申请；按“确认”之前不写入；审计记为 `via: assistant` | 保安、交警；交通管理 / 管理员（显示申请） | 回答中 |
+| AI explain · AI 解读：告警如何由存储数值算出、SOP 步骤（`webapp/sop.yaml`）、法条（`webapp/legal.yaml`） | 交警、保安、管理员 | 告警中心 |
+| 案件摘要（附进证据包）、每日交通与拥堵回顾 | 交警；交通管理 | 告警中心；报表 |
+| 图像检查（VLM，默认关闭）：临时车牌的第二次读取、TYPE_MISMATCH / DUPLICATE 的外观比对 | 交警 | 车牌检索；告警中心 |
+
+### 14.3 代码结构和怎样加一个工具
+
+`webapp/copilot/`：`tools.py`（工具 = 服务函数的薄封装）、`agent.py`（对话循环）、`llm.py`（Anthropic SDK 与测试用假模型）、
+`prompts.py`（冻结的系统提示词）、`actions.py`（卡片）、`numbers.py`（数字核对）、`explain.py` + `sop.py`、`documents.py`、
+`vlm.py`、`offline.py`、`store.py`、`eval/`。加一个工具：在 `services/` 里有对应函数 → 在 `tools.py` 写一个 pydantic 输入
+模型和 `@tool(...)` 函数（指定哪些角色可用，返回带 `ref` 的紧凑 JSON，需要的推导数字也在这里算好）→ 在
+`webapp/tests/test_copilot.py` 加测试。改提示词或工具后，已有会话会自动开新会话。
+
+### 14.4 隐私规则（不要破坏）
+
+- 助手只调用服务函数，带着当前用户的角色：权限、打码、审计全部继承；没有自己的 SQL。
+- 打码角色要看完整车牌只有一条路：助手准备“显示完整车牌”卡片，由用户选择理由；助手绝不自行显示，也绝不建议换账号。
+- 真实车辆被隐去的违规只有数量，没有任何工具返回细节；模拟数据始终标注。
+- 发送给 Anthropic 的是问题和该角色的工具结果（打码角色是打码后的）；图像只在开启图像检查后、逐张确认才发送。会话
+  30 天后删除。措辞：遵循 PDPA 2010 的数据最小化原则；PDPA 不适用于联邦和州政府。
+
+### 14.5 测试与评测
+
+`python webapp/tests/test_copilot.py`：19 个测试，用假模型，不联网、不需要密钥，已加入 CI。评测集 32 个问题
+（`webapp/copilot/eval/questions.yaml`，期望答案从数据库计算）：`--dry-run oracle` 得 32/32、`--dry-run null` 得 0/32，验证
+了评分器。在真实模型上跑评测要花钱（估算每题约 0.04-0.10 美元），需先同意费用并用 `--approve-harness` 批准。
+
+### 14.6 局限
+
+SOP 是项目组写的草稿（`status: draft`，审阅后改为 `reviewed`）；数字核对读不了用文字写的数字；离线模板只有中英文；
+马来文回答取决于模型；每题费用在实测前只是估算。详见 [COPILOT_ZH.md](docs/system/COPILOT_ZH.md) 第 10 节。

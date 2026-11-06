@@ -36,6 +36,8 @@ NAV = {
               ("users", "Users", "/admin/users"), ("data", "Data", "/admin/data"),
               ("privacy", "Privacy & audit", "/admin/privacy"), ("settings", "Settings", "/admin/settings")],
 }
+for _role in NAV:                                     # the copilot page (the panel is on every page too)
+    NAV[_role].insert(1, ("assistant", "Copilot", "/assistant"))
 HOME = {"police": "/", "guard": "/gate", "traffic": "/", "admin": "/"}
 ROLE_LABEL = {"police": "Police / JPJ", "guard": "Guard", "traffic": "Traffic manager", "admin": "Administrator"}
 EXTRA = {"timeline": ("police",)}                     # pages reached from other pages, not in the navigation
@@ -103,6 +105,7 @@ def simple(path: str, key: str, title: str, template: str):
 
 
 for _path, _key, _title, _tpl in (
+        ("/assistant", "assistant", "Copilot", "assistant.html"),
         ("/plates", "plates", "Plate search", "plates.html"),
         ("/alerts", "alerts", "Alert centre", "alerts.html"),
         ("/lists", "lists", "Watch list & blacklist", "lists.html"),

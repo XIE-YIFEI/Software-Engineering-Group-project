@@ -123,6 +123,22 @@ OpenAPI / Swagger 页面）或 `/openapi.json`。本页说明约定，并列出�
 | `GET /media/sightings/{id}/crop` | 按范围 | 警察、保安和已授权查看的记录给清晰图，其余在服务器端模糊 |
 | `GET /media/sightings/{id}/scene` | P、G、已授权查看的记录 | 最佳截图所在的整帧画面；记入审计日志 |
 
+### SECS Copilot（AI 助手，[COPILOT_ZH.md](COPILOT_ZH.md)）
+
+| 方法与路径 | 角色 | 作用 |
+|---|---|---|
+| `GET /copilot/status` | 全部 | 在线还是离线（及原因）、模型、effort、限额、该角色的快捷问题和工具 |
+| `POST /copilot/chat` | 全部 | 请求体 `{message, conversation_id, page}`；以服务器推送事件（SSE）流式返回：`meta`、`text`、`step`、`step_done`、`cite`、`card`、`offline`、`error`、`done`（保存后的回答，含引用、卡片、数字核对和费用） |
+| `POST /copilot/quick` | 全部（按角色） | 请求体 `{id, lang}`：用工具和模板回答一个快捷问题；离线可用 |
+| `GET /copilot/conversations` · `GET /copilot/conversations/{id}` · `DELETE /copilot/conversations/{id}` | 本人 | 用户自己的会话 |
+| `POST /copilot/actions/{id}/confirm` · `POST /copilot/actions/{id}/cancel` | 卡片所有者 | 请求体 `{fields}`：通过普通服务函数执行准备好的修改（审计记为 `via: assistant`）；缺少备注或理由时返回 422，卡片保持待确认 |
+| `POST /copilot/alerts/{id}/explain` | P G A | 请求体 `{lang}`；流式返回 `facts`、`text`、`done`：“AI 解读”，附 SOP 步骤和法律依据 |
+| `POST /copilot/alerts/{id}/case-summary` · `GET /copilot/alerts/{id}/case-summary` | P | 撰写 / 读取附进该告警证据包的案件摘要 |
+| `POST /copilot/reviews/daily` · `GET /copilot/reviews/daily/latest` | T（P、A 可阅读） | 请求体 `{date, congestion_day, lang}`；流式返回每日交通与拥堵回顾 |
+| `GET /copilot/documents/{id}.pdf` | P（案件摘要）；T P A（回顾） | 生成文档的 PDF |
+| `POST /copilot/vlm/second-reading/{sighting_id}` · `POST /copilot/vlm/appearance/{alert_id}` · `POST /copilot/vlm/{id}/decide` | P，需开启图像检查 | 可选的图像检查；决定 `{accept, reading}` |
+| `GET /copilot/settings` · `PUT /copilot/settings` | A | 模型、effort、图像检查（`{model, effort, vlm_enabled}`）；状态和用量 |
+
 ## 3. 示例（Python，连接正在运行的服务器）
 
 ```python
@@ -143,7 +159,7 @@ c.post(f"/api/v1/alerts/{alert['id']}/transition", json={"to": "acknowledged", "
 ## 4. 服务函数（供 AI 助手调用）
 
 API 路由只是薄薄一层：认证 -> 调用服务函数 -> 返回它的 pydantic 模型。服务函数带类型、有文档、接收当前登录的 `User`，
-所以下一个任务的 AI 助手可以把它们当作工具调用，并继承同样的权限、打码和审计（助手发起的调用记为 `via: assistant`）。
+所以 AI 助手（SECS Copilot）把它们当作工具调用，并继承同样的权限、打码和审计（助手发起的调用记为 `via: assistant`）。
 
 | 模块（`webapp/services/`） | 函数（都接收 `conn, user, …`） | 返回 |
 |---|---|---|
@@ -159,5 +175,6 @@ API 路由只是薄薄一层：认证 -> 调用服务函数 -> 返回它的 pyda
 | `reports` | `build(kind, day, weekly)`、`to_csv(rep)`、`to_pdf(rep)` | dict、CSV 文本、PDF 字节 |
 | `admin` | `users()`、`add_user(…)`、`update_user(…)`、`get_settings()`、`put_settings(values)`、`audit_log(…)`、`verify()`、`run_purge(dry_run)`、`corrections()`、`data_status()` | 模型 / dict |
 
-模型定义在 `webapp/models.py`；它们的 JSON Schema 在 `/openapi.json`（`components.schemas`）里，可以直接转换成工具定义。
-会改动数据的操作（告警处理、名单修改、门岗决定）在助手里应保留一步人工确认。
+模型定义在 `webapp/models.py`；它们的 JSON Schema 在 `/openapi.json`（`components.schemas`）里。SECS Copilot
+（[COPILOT_ZH.md](COPILOT_ZH.md)）以当前登录用户的身份把这些函数当作工具调用，因此继承同样的权限、打码和审计；它的写操作
+（访客通行证、名单条目、告警状态变更、显示完整车牌）都是操作卡片，只有用户确认后才调用服务函数。

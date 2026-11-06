@@ -90,8 +90,8 @@ def create_app(settings: Optional[Settings] = None, start_worker: bool = True, r
         msgs = [f"{'.'.join(str(x) for x in e.get('loc', [])[1:])}: {e.get('msg')}" for e in exc.errors()]
         return JSONResponse({"detail": "; ".join(msgs) or "invalid request"}, status_code=422)
 
-    from .api import admin, core, gate, plates, traffic
-    for r in (core.router, plates.router, traffic.router, gate.router, admin.router):
+    from .api import admin, copilot, core, gate, plates, traffic
+    for r in (core.router, plates.router, traffic.router, gate.router, admin.router, copilot.router):
         app.include_router(r, prefix="/api/v1")
     app.include_router(core.media, prefix="/media")
     from .web import pages
