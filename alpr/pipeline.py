@@ -25,6 +25,7 @@ the violation rules (never counted in the flow).
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import tempfile
@@ -688,16 +689,22 @@ class AlprPipeline:
     def write_evidence(self, rows: List[Dict], out_dir: str, start_frame: int = 0) -> None:
         """evidence_dir: save each plate-log entry's best plate crop and the full frame it came from to `out_dir`
         and add their paths (+ frame number, time, vehicle and plate boxes in that frame) to its row of
-        `summary()` as `evidence`. Rows whose vehicle never had a sharp enough crop get no `evidence`."""
+        `summary()` as `evidence`. Image versions are immutable so earlier checkpoints stay readable.
+        Rows whose vehicle never had a sharp enough crop get no `evidence`."""
         os.makedirs(out_dir, exist_ok=True)
         entries = sorted((e for e in self.log if not e.simulated), key=lambda e: e.first_frame)
-        for i, (e, row) in enumerate(zip(entries, rows), 1):
+        for e, row in zip(entries, rows):
             if e.crop is None or e.scene is None:
                 continue
-            stem = os.path.join(out_dir, f"{i:03d}_{e.result.compact}").replace("\\", "/")
-            cv2.imwrite(stem + "_crop.jpg", e.crop, [cv2.IMWRITE_JPEG_QUALITY, 95])
-            with open(stem + "_scene.jpg", "wb") as f:
-                f.write(e.scene["jpg"])
+            ok, encoded = cv2.imencode(".jpg", e.crop, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            if not ok:
+                raise OSError("could not encode plate evidence")
+            crop_bytes, scene_bytes = encoded.tobytes(), e.scene["jpg"]
+            # Immutable image pairs keep earlier checkpoints valid during later saves.
+            version = hashlib.sha256(crop_bytes + scene_bytes).hexdigest()
+            stem = os.path.join(out_dir, version).replace("\\", "/")
+            _write_evidence_image(stem + "_crop.jpg", crop_bytes)
+            _write_evidence_image(stem + "_scene.jpg", scene_bytes)
             row["evidence"] = {"crop": stem + "_crop.jpg", "scene": stem + "_scene.jpg", "frame": e.scene["frame"],
                                "time_sec": round((start_frame + e.scene["frame"]) / self.fps, 2),
                                "vehicle_box": e.scene["vehicle_box"], "plate_box": e.scene["plate_box"]}
@@ -797,6 +804,24 @@ class VideoOut:
             self._cv.release()
 
 
+def _write_evidence_image(path: str, data: bytes) -> None:
+    """Publish an immutable image before a checkpoint can reference it."""
+    if os.path.exists(path):
+        return
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="wb", dir=os.path.dirname(path) or ".",
+                                         prefix="evidence_", suffix=".tmp", delete=False) as f:
+            temp_path = f.name
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if temp_path is not None and os.path.exists(temp_path):
+            os.unlink(temp_path)
+
+
 def _write_json_atomic(path: str, report: Dict) -> None:
     """Publish a complete JSON snapshot without truncating the previous checkpoint."""
     temp_path = None
@@ -861,8 +886,11 @@ def run(cfg: AlprConfig) -> int:
         nonlocal last_partial_save
         now = time.monotonic()
         if force or now - last_partial_save >= PARTIAL_SAVE_INTERVAL_SEC:
+            rows = pipe.summary(summary_start)
+            if cfg.evidence_dir:
+                pipe.write_evidence(rows, cfg.evidence_dir, summary_start)
             _write_json_atomic(partial_path, {"complete": False, "frames_processed": n,
-                                             "plates": pipe.summary(summary_start)})
+                                             "plates": rows})
             last_partial_save = now
 
     while n < total:

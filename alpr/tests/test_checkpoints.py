@@ -32,12 +32,29 @@ def _process_frame(self, frame, idx):
         result = PlateResult("WA 1234 B", "WA1234B", 0.95, 10, CONFIRMED)
         self.log.append(LogEntry(result, "Car", "", idx, idx, {1}))
     self.log[0].last_frame = idx
+    if self.cfg.evidence_dir:
+        self.log[0].crop = np.full((12, 40, 3), idx * 10, dtype=np.uint8)
+        self.log[0].scene = {"jpg": cv2.imencode(".jpg", frame)[1].tobytes(), "frame": idx,
+                             "vehicle_box": [0, 0, 64, 48], "plate_box": [1, 2, 41, 14]}
     return frame, []
 
 
-def _run_video(source, out, marker=None, stop_mode=None, gate=False, interval=0):
+def _run_video(source, out, marker=None, stop_mode=None, gate=False, interval=0, evidence=False):
     cfg = AlprConfig(source=str(source), out=str(out), headless=True, start_sec=1.2, frame_step=2)
+    if evidence or stop_mode == "evidence_writing":
+        cfg.evidence_dir = str(Path(out).parent / "evidence")
     original_dump = json.dump
+    original_image_write = pipeline._write_evidence_image
+    image_writes = 0
+
+    def write_image(path, data):
+        nonlocal image_writes
+        image_writes += 1
+        if image_writes == 6 and stop_mode == "evidence_writing":
+            # The third snapshot has saved its new crop but not its scene or JSON.
+            Path(marker).touch()
+            time.sleep(120)
+        return original_image_write(path, data)
 
     def process(self, frame, idx):
         if idx == 3 and stop_mode == "processing":
@@ -59,6 +76,7 @@ def _run_video(source, out, marker=None, stop_mode=None, gate=False, interval=0)
         stack.enter_context(patch.object(AlprPipeline, "lane_report", return_value=None))
         stack.enter_context(patch.object(pipeline, "PARTIAL_SAVE_INTERVAL_SEC", interval))
         stack.enter_context(patch.object(pipeline.json, "dump", dump))
+        stack.enter_context(patch.object(pipeline, "_write_evidence_image", write_image))
         if gate:
             cfg.view_gate = {"template": "unused"}
             stack.enter_context(patch.object(pipeline.ViewGate, "from_config", return_value=lambda frame: False))
@@ -118,6 +136,7 @@ class CheckpointTests(unittest.TestCase):
         self.assertEqual(row["compact"], "WA1234B")
         self.assertEqual((row["first_sec"], row["last_sec"]), (1.4, 1.6))
         self.assertFalse(self.final.exists())
+        return report
 
     def test_forced_stop_preserves_last_checkpoint(self):
         self._terminate_worker("processing")
@@ -125,6 +144,33 @@ class CheckpointTests(unittest.TestCase):
     def test_forced_stop_during_write_preserves_readable_checkpoint(self):
         self._terminate_worker("writing")
         self.assertTrue(list(self.root.glob("result.partial.json.*.tmp")))
+
+    def test_forced_stop_during_next_image_pair_preserves_old_evidence(self):
+        report = self._terminate_worker("evidence_writing")
+        evidence = report["plates"][0]["evidence"]
+        self.assertEqual((evidence["frame"], evidence["time_sec"]), (2, 1.6))
+        crop = cv2.imread(evidence["crop"])
+        scene = cv2.imread(evidence["scene"])
+        self.assertEqual(crop.shape, (12, 40, 3))
+        self.assertEqual(scene.shape, (48, 64, 3))
+        self.assertAlmostEqual(float(crop.mean()), 20, delta=1)
+
+    def test_partial_references_images_only_after_successful_save(self):
+        original_write = pipeline._write_evidence_image
+        writes = 0
+
+        def fail_scene(path, data):
+            nonlocal writes
+            writes += 1
+            if writes == 2:
+                raise OSError("scene save failed")
+            original_write(path, data)
+
+        with patch.object(pipeline, "_write_evidence_image", side_effect=fail_scene):
+            with self.assertRaisesRegex(OSError, "scene save failed"):
+                _run_video(self.source, self.out, evidence=True)
+        self.assertEqual(json.loads(self.partial.read_text(encoding="utf-8")),
+                         {"complete": False, "frames_processed": 0, "plates": []})
 
     def test_replace_failure_preserves_previous_checkpoint(self):
         pipeline._write_json_atomic(str(self.partial), {"complete": False, "frames_processed": 2, "plates": []})
