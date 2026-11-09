@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -58,6 +59,7 @@ STATUS_RANK = {ACQUIRING: 0, TENTATIVE: 1, CONFIRMED: 2}
 TRACKER_CFG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trackers", "bytetrack_alpr.yaml")
 APART_MAX_OVERLAP = 0.3   # two boxes overlapping less than this (of the smaller box) are two vehicles
 APART_MIN_FRAMES = 5      # ... seen like that in this many frames: never merged; identical plate = DUPLICATE
+PARTIAL_SAVE_INTERVAL_SEC = 5.0
 
 
 def openvino_dir(weights: str) -> str:
@@ -795,6 +797,22 @@ class VideoOut:
             self._cv.release()
 
 
+def _write_json_atomic(path: str, report: Dict) -> None:
+    """Publish a complete JSON snapshot without truncating the previous checkpoint."""
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=os.path.dirname(path) or ".",
+                                         prefix=os.path.basename(path) + ".", suffix=".tmp", delete=False) as f:
+            temp_path = f.name
+            json.dump(report, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if temp_path is not None and os.path.exists(temp_path):
+            os.unlink(temp_path)
+
+
 def run(cfg: AlprConfig) -> int:
     if not os.path.exists(cfg.source):
         print(f"Error: source not found: {cfg.source}")
@@ -817,6 +835,8 @@ def run(cfg: AlprConfig) -> int:
     cap.set(cv2.CAP_PROP_POS_FRAMES, start)
 
     os.makedirs(os.path.dirname(cfg.out) or ".", exist_ok=True)
+    partial_path = os.path.splitext(cfg.out)[0] + ".partial.json"
+    _write_json_atomic(partial_path, {"complete": False, "frames_processed": 0, "plates": []})
     out_size = tuple(cfg.dashboard_size) if cfg.hud_mode == "dashboard" else (width, height)
     writer = None if cfg.headless else VideoOut(cfg.out, fps, out_size)
 
@@ -834,6 +854,17 @@ def run(cfg: AlprConfig) -> int:
     gate = ViewGate.from_config(cfg.view_gate, width, height) if cfg.view_gate else None
     in_view, n_in_view = True, 0
     t_start, n, last_frame = time.time(), 0, None
+    summary_start = int(cfg.start_sec * fps)                   # same source offset as the final report
+    last_partial_save = time.monotonic()
+
+    def save_partial(force: bool = False) -> None:
+        nonlocal last_partial_save
+        now = time.monotonic()
+        if force or now - last_partial_save >= PARTIAL_SAVE_INTERVAL_SEC:
+            _write_json_atomic(partial_path, {"complete": False, "frames_processed": n,
+                                             "plates": pipe.summary(summary_start)})
+            last_partial_save = now
+
     while n < total:
         ok, frame = cap.read()
         if not ok:
@@ -846,6 +877,7 @@ def run(cfg: AlprConfig) -> int:
         if gate is not None:                                   # rotating camera: another view is on screen
             if not gate(frame):
                 in_view = False
+                save_partial()
                 continue
             if not in_view:
                 pipe.reset_tracking()
@@ -855,11 +887,13 @@ def run(cfg: AlprConfig) -> int:
         annotated, vehicles = pipe.process_frame(frame, n)
         if writer is not None:
             writer.write(annotated)
+        save_partial()
         if n % 50 == 0:
             st = pipe._stats(n)
             last = next((e.result for e in reversed(pipe.log) if not e.simulated), None)
             print(f"[{n}/{total}] {n / fps:.1f}s | active {len(vehicles)} | counted {st['count']} | "
                   f"plates {st['plates']} | last {last.text + ' ' + last.status if last else '-'}")
+    save_partial(force=True)                                  # partial snapshots always remain incomplete
     cap.release()
     elapsed = max(1e-3, time.time() - t_start)                 # frames only (the end card is not timed)
     n_run = n_in_view if gate is not None else n               # frames that went through the models
