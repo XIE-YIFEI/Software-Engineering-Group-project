@@ -1,7 +1,8 @@
 """ALPR pipeline: vehicle detection + ByteTrack, plate detection, quality gate, OCR, per-track voting,
 plate log (one entry per vehicle) and traffic-flow counting.
 
-`AlprPipeline.process_frame` is model-driven but side-effect free w.r.t. I/O; `run` handles the video.
+`AlprPipeline.process_frame` is model-driven; optional P03 JSONL events are written during OCR.
+`run` handles the video and vehicle summaries.
 
 Tracking notes (each fixed a failure seen on real Malaysian footage):
 * class-agnostic NMS: a pickup is often detected as *car* and *truck* at once; class-aware NMS kept
@@ -47,6 +48,7 @@ from .hud import plate_image, render_dashboard, render_hud, render_summary
 from .lanes import Calibration, LaneMap
 from .lead import LeadSelector
 from .ocr import make_ocr
+from .ocr_events import OcrEventWriter
 from .plates import normalize, parse_plate
 from .quality import assess
 from .registry import Alert, PlateChecker, estimate_colour
@@ -144,6 +146,7 @@ class AlprPipeline:
     def __init__(self, cfg: AlprConfig, ocr=None, fps: float = 25.0):
         self.cfg = cfg
         self.fps = fps
+        self.ocr_events = OcrEventWriter(cfg.ocr_reads_jsonl) if cfg.ocr_reads_jsonl else None
         self.vehicle_model, self._vehicle_args = load_detector(cfg.vehicle_model, cfg.model_backend, cfg.openvino_device)
         self.plate_model = self.plate_fallback = self.ocr = None
         self._plate_args: Dict = {}
@@ -368,6 +371,7 @@ class AlprPipeline:
         first = cands[0][0]
         group = [first] + [b for b, _ in cands[1:] if _contain(b, first) > 0.5][:2]
         chosen, read = first, None
+        n_backend_calls = 0
         if len(group) > 1:
             crops = [self._crop(frame, (vx1 + b[0], vy1 + b[1], vx1 + b[2], vy1 + b[3])) for b in group]
             # OCR only when a reading would be taken from one of them: a far / blurry plate, or a vehicle
@@ -377,6 +381,7 @@ class AlprPipeline:
                 options = []
                 for b, c in zip(group, crops):
                     r = self.ocr.read_plate(c)
+                    n_backend_calls += 1
                     options.append(((r is not None and r.valid, r.conf if r else 0.0), b, r))
                 _, chosen, read = max(options, key=lambda o: o[0])
         px1, py1, px2, py2 = chosen
@@ -391,18 +396,31 @@ class AlprPipeline:
                                  "plate_box": [int(vx1 + px1), int(vy1 + py1), int(vx1 + px2), int(vy1 + py2)]}
 
         pw = px2 - px1
+        accepted_for_vote = False
+        reject_reason = "quality_gate" if not q.ok else "read_budget"
         if self._wants_read(st, q, pw):
             st.n_reads += 1
             st.best_ocr_q = max(st.best_ocr_q, q.score)
             st.best_read_w = max(st.best_read_w, pw)
             if read is None:
                 read = self.ocr.read_plate(crop)
+                n_backend_calls += 1
+            reject_reason = "empty_read" if read is None else "nonstandard_below_min_width"
             # A reading the OCR marks as no legal plate counts as evidence of a non-standard plate only
             # at (nearly) full resolution: far, blurry plates are often read as junk.
             if read and (read.valid or pw >= NONSTD_MIN_W_FRAC * cfg.ocr_ref_plate_w):
                 # a far plate (few pixels) is misread consistently, so its vote counts with resolution^2
                 weight_q = q.score * min(1.0, pw / cfg.ocr_ref_plate_w) ** 2
                 self.voter.add(v["track_id"], read.text, read.conf, weight_q, valid=read.valid)
+                accepted_for_vote = True
+                reject_reason = None
+
+        if n_backend_calls and self.ocr_events is not None:
+            self.ocr_events.write(
+                track_id=v["track_id"], frame=idx,
+                time_sec=(int(cfg.start_sec * self.fps) + idx) / self.fps,
+                read=read, crop_quality_score=q.score, accepted_for_vote=accepted_for_vote,
+                reject_reason=reject_reason, n_backend_calls=n_backend_calls)
 
     def _wants_read(self, st: TrackState, q, pw: int) -> bool:
         """Is a crop of quality `q` and width `pw` px read now? The OCR budget only bounds low-resolution

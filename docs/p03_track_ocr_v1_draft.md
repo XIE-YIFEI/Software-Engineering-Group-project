@@ -4,7 +4,7 @@
 
 Current branch: `yifei/recognition-checkpoints`. Section 1 describes implemented
 exports. Section 2 records the Track/OCR requirements confirmed by Hanwen;
-the per-read JSONL export is **not yet implemented**. P03 remains a Draft until
+the per-read JSONL export is implemented as an optional stream. P03 remains a Draft until
 the outstanding sections and interfaces are resolved.
 
 ## 1. Implemented: one vehicle summary in `plates[]`
@@ -36,7 +36,7 @@ FPS is source FPS divided by `frame_step`; summary times use
 `(int(start_sec * effective_fps) + frame) / effective_fps`. Partial files remain
 incomplete even after a normal finish; the existing final report is separate.
 
-## 2. Confirmed Track/OCR requirements — JSONL not yet implemented
+## 2. Confirmed Track/OCR requirements — optional JSONL implemented
 
 For v1, retain one raw reading from each selected OCR attempt. Do not export
 top-k candidates or per-character probabilities. Write per-read records to a
@@ -68,13 +68,29 @@ An invalid format does **not** automatically mean rejection: a non-standard
 reading can still be submitted to the voter. If it was submitted, record
 `accepted_for_vote: true` even when `ocr_valid_format` is `false`.
 
-These are confirmed requirements, not a description of an existing JSONL writer.
-Some values already exist in memory, but event capture, rejection reasons and
-backend-call accounting still require implementation. The voter retains bounded
-accepted readings, not a raw history. Its current quality input is
+The voter retains bounded accepted readings, not a raw history. Its current quality input is
 `q.score * min(1, plate_width / ocr_ref_plate_w)^2`, combined with OCR confidence;
 this derived value is distinct from `crop_quality_score` and is not an additional
 v1 per-read field.
+
+### Implementation and use
+
+Enable the stream with `--ocr-reads-jsonl PATH` in `run_alpr.py`, or set
+`ocr_reads_jsonl` in the configuration. It is disabled by default. The selected
+file is overwritten at run initialization; use a new output directory per run.
+Each event is appended and the file closed immediately during processing,
+without waiting for the final report. Completed lines remain readable after
+process termination; an interrupted trailing write is not a complete event.
+
+No event is emitted when no backend OCR call occurs. Existing overlapping-box
+selection and empty-result retry behavior are preserved, with all calls counted
+in the single event. Logging makes no additional OCR calls. `accepted_for_vote`
+records the call to `PlateVoter.add`, not its return value or later bucket retention.
+Missing OCR results use JSON `null` for text, format and confidence; successful
+submissions use `reject_reason: null`. Rejection reasons are `empty_read`,
+`nonstandard_below_min_width`, `quality_gate`, or `read_budget`. The latter two
+can occur after candidate OCR when the selected crop does not pass admission.
+The existing `.plates.json` structure and voting rules are unchanged.
 
 ## 3. Example: existing checkpoint shape
 
@@ -115,8 +131,8 @@ JSONL example; no per-read fields are included.
    with Shiyu.** No stop-signal mechanism or timeout value is agreed in this
    draft.
 
-The Track/OCR decisions in Section 2 are confirmed. The per-read JSONL export
-remains to be implemented, and the overall P03 document remains a Draft.
+The Track/OCR decisions in Section 2 are confirmed and the optional per-read
+JSONL export is implemented. The overall P03 document remains a Draft.
 
 Checked against [pipeline](../alpr/pipeline.py), [OCR](../alpr/ocr.py),
 [voting](../alpr/voting.py), [quality](../alpr/quality.py), the tracked
