@@ -1041,7 +1041,7 @@ under Settings → SECS Copilot; the limits (30 requests per user per hour, a da
 | Feature | Who | Where |
 |---|---|---|
 | Assistant panel: questions in English, Chinese or Malay, streamed answers, tool steps; every record is a clickable citation chip (id · plate, masked per role · time) | all roles | the "✦ Copilot" button on every page; the Copilot page |
-| Action cards: visitor pass, list entry, alert status, reveal request; nothing written before Confirm; audit `via: assistant` | guard, police; traffic / admin (reveal) | in the answer |
+| Read-only this semester (plan Rev2): the four action cards (visitor pass, list entry, alert status, reveal request) are switched off, the server refuses them even if the user would confirm, and the assistant names the page where the user can do it; the card code stays dormant for the spring plan (`ACTIONS_ENABLED = False` in `webapp/copilot/config.py`) | all roles | in the answer |
 | AI explain · AI 解读: how the alert was computed from its stored values, SOP steps (`webapp/sop.yaml`), legal sections (`webapp/legal.yaml`) | police, guard, admin | Alert centre |
 | Case summary (added to the evidence pack); daily traffic and congestion review | police; traffic manager | Alert centre; Reports |
 | Image checks (VLM, off by default): second reading of provisional plates, appearance check for TYPE_MISMATCH / DUPLICATE | police | Plate search; Alert centre |
@@ -1049,7 +1049,7 @@ under Settings → SECS Copilot; the limits (30 requests per user per hour, a da
 ### 14.3 Code structure and adding a tool
 
 `webapp/copilot/`: `tools.py` (tools = thin wrappers of the service functions), `agent.py` (the chat loop), `llm.py`
-(the Anthropic SDK and the fake model for tests), `prompts.py` (the frozen system prompt), `actions.py` (cards),
+(the Anthropic SDK and the fake model for tests), `prompts.py` (the frozen system prompt), `actions.py` (cards, dormant while read-only),
 `numbers.py` (the number check), `explain.py` + `sop.py`, `documents.py`, `vlm.py`, `offline.py`, `store.py`, `eval/`.
 To add a tool: have the function in `services/` -> write a pydantic input model and a `@tool(...)` function in
 `tools.py` (which roles may use it; compact JSON with a `ref` per record; any derived figures computed there) -> add a
@@ -1059,8 +1059,10 @@ test to `webapp/tests/test_copilot.py`. After a prompt or tool change, existing 
 
 - The assistant only calls service functions, with the signed-in user's role: permissions, masking and audit are
   inherited; it has no SQL of its own.
-- A masked role reaches a full plate only one way: the assistant prepares a "Show full plate" card and the user picks
-  the reason; the assistant never reveals by itself and never suggests switching accounts.
+- The assistant is read-only: it changes nothing and prepares nothing; do not add a tool that writes (turning the
+  dormant action cards back on is a separate, reviewed change).
+- A masked role reaches a full plate only one way: "Show full plate" on Plate search, where the user picks the reason;
+  the assistant points there, never reveals by itself and never suggests switching accounts.
 - Withheld violations of real vehicles exist only as counts; no tool returns details. Simulated data stays labelled.
 - Anthropic receives the question and that role's tool results (masked for masked roles); images only when the image
   checks are on, one confirmed image at a time. Conversations are deleted after 30 days. Wording: following the
@@ -1068,14 +1070,14 @@ test to `webapp/tests/test_copilot.py`. After a prompt or tool change, existing 
 
 ### 14.5 Tests and evaluation
 
-`python webapp/tests/test_copilot.py`: 19 tests with a fake model, no network, no key; in CI. The evaluation set has 32
+`python webapp/tests/test_copilot.py`: 20 tests with a fake model, no network, no key; in CI. The evaluation set has 32
 questions (`webapp/copilot/eval/questions.yaml`, expected answers computed from the database): `--dry-run oracle` scores
 32/32 and `--dry-run null` 0/32, which checks the grader. Running it on the real model costs money (estimated 0.04-0.10
 USD per question), so it needs an agreed budget and the harness approved with `--approve-harness`.
 
 ### 14.6 Limitations
 
-The SOP file is a draft by the project team (`status: draft`; set it to `reviewed` after reading it); the number check
+The SOP file was written by the project team and reviewed by a team member (`status: reviewed`); the number check
 cannot read numbers written as words; the offline templates are English and Chinese only; Malay answers depend on the
 model; the cost per question is an estimate until measured. Details: [COPILOT_EN.md](docs/system/COPILOT_EN.md),
 section 10.

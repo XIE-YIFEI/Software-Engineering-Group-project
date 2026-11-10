@@ -192,10 +192,11 @@ the second completed (2.6 GB installed). Result on 24 October 2026: **86 / 86** 
 
 ## 12. SECS Copilot (the AI assistant)
 
-`python webapp/tests/test_copilot.py` (also in CI): 19 tests with a scripted fake model in place of Claude, no network
+`python webapp/tests/test_copilot.py` (also in CI): 20 tests with a scripted fake model in place of Claude, no network
 and no API key. What each covers is listed in [COPILOT_EN.md](COPILOT_EN.md), section 9: tool schemas and tools per
 role; permission inheritance, masking and audit (`via: assistant`); the streamed chat loop, citation chips and the
-append-only transcript; the number check; action cards (nothing written before Confirm); the SOP and legal sources of
+append-only transcript; the number check; the read-only policy (the four AI actions refused, nothing changed, no plate
+unmasked); the dormant action cards (switched on in their tests: nothing written before Confirm); the SOP and legal sources of
 "AI explain"; the case summary in the evidence pack; the daily review; offline mode; refusals and failures; the rate
 limit and cost logging; retention; the optional image checks; the API and pages; the exact request the Anthropic SDK
 sends (mock HTTP transport); the evaluation runner's self-check.

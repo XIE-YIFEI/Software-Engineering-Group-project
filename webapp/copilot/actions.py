@@ -5,6 +5,10 @@ alert transition) and stores the card; nothing changes in the system. Only `conf
 of the card presses Confirm, runs the ordinary service function - with the same permission checks as the pages - as
 that user with via="assistant", so the service's own audit row says who confirmed it and that it came through the
 assistant; a `copilot_action` audit row links it to the card. Cards expire after 30 minutes.
+
+Autumn 2026 the copilot is read-only (config.ACTIONS_ENABLED is False, plan Rev2): `prepare` and `confirm` refuse
+(HTTP 403 through the API), so no card is created and none runs, not even one prepared earlier; `cancel` still works.
+The code stays for the spring plan, where turning it back on is a separate, reviewed change.
 """
 from __future__ import annotations
 
@@ -149,6 +153,8 @@ def card(row: Dict[str, Any]) -> Dict[str, Any]:
 
 def prepare(conn: sqlite3.Connection, user: User, kind: str, params: Dict[str, Any],
             conversation_id: Optional[int] = None) -> Dict[str, Any]:
+    if not config.ACTIONS_ENABLED:
+        raise Forbidden(config.READ_ONLY)
     p = _check(conn, user, kind, {k: v for k, v in params.items() if v not in (None, "")})
     now = clock.now()
     aid = db.insert(conn, "copilot_actions", {
@@ -173,7 +179,9 @@ def _own(conn: sqlite3.Connection, user: User, action_id: int) -> Dict[str, Any]
 
 def confirm(conn: sqlite3.Connection, user: User, action_id: int, edits: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Run the prepared operation as `user` (via the assistant). A missing or invalid field leaves the card pending
-    (HTTP 422) so the user can correct it; a refusal by the service marks it failed."""
+    (HTTP 422) so the user can correct it; a refusal by the service marks it failed. Read-only: refused, nothing runs."""
+    if not config.ACTIONS_ENABLED:
+        raise Forbidden(config.READ_ONLY)
     row = _own(conn, user, action_id)
     kind = row["kind"]
     p = json.loads(row["params"])

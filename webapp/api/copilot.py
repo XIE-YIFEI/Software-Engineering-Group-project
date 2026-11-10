@@ -1,5 +1,6 @@
-"""API: SECS Copilot - chat (streamed as server-sent events), quick questions, action cards, "AI explain", generated
-documents, the optional image checks and the copilot's admin settings. See docs/system/COPILOT_EN.md."""
+"""API: SECS Copilot - chat (streamed as server-sent events), quick questions, action cards (confirm refused while the
+copilot is read-only), "AI explain", generated documents, the optional image checks and the copilot's admin settings.
+See docs/system/COPILOT_EN.md."""
 from __future__ import annotations
 
 import json

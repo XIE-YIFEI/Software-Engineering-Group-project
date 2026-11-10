@@ -1,7 +1,8 @@
 """Tests of SECS Copilot (webapp/copilot): tool schemas, permission inheritance and masking, the chat loop with a
-deterministic fake model, action cards (nothing written before Confirm), audit entries (via=assistant), the number
-check, the SOP and legal sources, generated documents, offline mode, refusals, limits, retention, the optional image
-checks, and the request the real Anthropic SDK sends (against a mock transport). No network, no API key.
+deterministic fake model, the read-only policy (the four actions refused, nothing changed, no plate revealed), the
+dormant action cards (switched on for their tests: nothing written before Confirm), audit entries (via=assistant), the
+number check, the SOP and legal sources, generated documents, offline mode, refusals, limits, retention, the optional
+image checks, and the request the real Anthropic SDK sends (against a mock transport). No network, no API key.
 
     python webapp/tests/test_copilot.py          (also runs under pytest)
 """
@@ -11,6 +12,7 @@ import json
 import os
 import re
 import sys
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
@@ -22,7 +24,7 @@ from webapp import clock, db  # noqa: E402
 from webapp.copilot import (actions, agent, config, documents, explain, numbers, offline, prompts, sop,  # noqa: E402
                             store, tools, vlm)
 from webapp.copilot.llm import FakeLLM, LLMUnavailable, ModelTurn, clean_blocks, text, tool, turn_cost  # noqa: E402
-from webapp.security import User  # noqa: E402
+from webapp.security import Forbidden, User  # noqa: E402
 
 ROOT = W.ROOT
 DAY = "jb_ciq_cam02_2023-03-22"
@@ -57,6 +59,17 @@ def ask(conn, u, question, script, conv=None, page=None):
     return out, fake
 
 
+@contextmanager
+def actions_on():
+    """Switch the dormant action cards back on for one test (the copilot is read-only: config.ACTIONS_ENABLED)."""
+    saved = config.ACTIONS_ENABLED
+    config.ACTIONS_ENABLED = True
+    try:
+        yield
+    finally:
+        config.ACTIONS_ENABLED = saved
+
+
 # ---------------------------------------------------------------------------- tools: schemas and permissions
 def test_tool_schemas_are_valid_and_offered_per_role():
     names = set()
@@ -76,10 +89,15 @@ def test_tool_schemas_are_valid_and_offered_per_role():
     assert "list_alerts" not in by["traffic"] and "evidence_pack_link" in by["police"]
     assert {n for n in by["guard"] if n.startswith("gate_")} == {"gate_identify", "gate_inside", "gate_access_log", "gate_passes"}
     assert not any(n.startswith("gate_") for n in by["police"] + by["traffic"] + by["admin"])
-    assert {n for n in names if n.startswith("prepare_")} == {"prepare_visitor_pass", "prepare_list_entry",
-                                                              "prepare_alert_status_change", "prepare_reveal_request"}
-    assert "prepare_reveal_request" in by["traffic"] and "prepare_reveal_request" not in by["police"]
-    assert not any(n.startswith("prepare_") for n in by["admin"] if n != "prepare_reveal_request")
+    # read-only: no role is offered an action tool
+    assert not any(n.startswith("prepare_") for n in names) and not any(n.startswith("prepare_") for r in by for n in by[r])
+    # the dormant action tools, if they were switched back on: who would get which
+    with actions_on():
+        on = tools.tools_by_role()
+    assert {n for r in on for n in on[r] if n.startswith("prepare_")} == {
+        "prepare_visitor_pass", "prepare_list_entry", "prepare_alert_status_change", "prepare_reveal_request"}
+    assert "prepare_reveal_request" in on["traffic"] and "prepare_reveal_request" not in on["police"]
+    assert not any(n.startswith("prepare_") for n in on["admin"] if n != "prepare_reveal_request")
     # the purpose list of the search is the system's own list
     from webapp.settings import PURPOSES
     s = next(d for d in tools.definitions("police") if d["name"] == "search_plates")["input_schema"]
@@ -129,7 +147,8 @@ def test_withheld_violations_of_real_vehicles_are_never_detailed():
     core = prompts.CORE
     for phrase in ("withheld", "Never reveal a plate yourself", "another role or account", "data-minimisation principle",
                    "does not apply to the Federal and State Governments", "not a finding that an offence happened",
-                   "Never invent or add steps", "Do not do arithmetic", "nothing is written until the user presses Confirm"):
+                   "Never invent or add steps", "Do not do arithmetic", "The copilot is read-only",
+                   "you cannot prepare a change"):
         assert phrase in core, phrase
     assert all(prompts.system_blocks(r)[-1].get("cache_control") for r in tools.ALL)
 
@@ -208,7 +227,8 @@ def test_number_check_flags_invented_numbers_and_accepts_rounding():
     assert [u["text"] for u in d["check"]["unmatched"]] == ["99"]
 
 
-# ---------------------------------------------------------------------------- action cards
+# ---------------------------------------------------------------------------- action cards (dormant: switched on here)
+@actions_on()
 def test_visitor_pass_card_writes_nothing_until_the_guard_confirms():
     st, app, c = setup()
     guard = user(c, "guard1")
@@ -248,6 +268,7 @@ def test_visitor_pass_card_writes_nothing_until_the_guard_confirms():
     assert db.scalar(c, "SELECT status FROM copilot_actions WHERE id = ?", (late["id"],)) == "expired"
 
 
+@actions_on()
 def test_alert_and_reveal_cards_need_the_users_note_and_reason():
     st, app, c = setup()
     police, traffic = user(c, "police1"), user(c, "traffic1")
@@ -287,6 +308,70 @@ def test_alert_and_reveal_cards_need_the_users_note_and_reason():
         raise AssertionError("police got a reveal card")
     except Exception as e:                                                     # noqa: BLE001
         assert "already sees full plates" in str(e)
+
+
+# ---------------------------------------------------------------------------- the read-only policy (plan Rev2)
+def test_copilot_is_read_only_the_four_actions_are_refused_and_nothing_changes():
+    st, app, c = setup()
+    assert not config.ACTIONS_ENABLED and config.status(c)["actions_enabled"] is False
+    business = ("visitor_passes", "list_entries", "alert_actions", "reveals", "corrections")
+    writes = ("pass_issue", "list_add", "alert_acknowledged", "alert_resolved", "alert_false_alarm", "reveal")
+
+    def counts():
+        return ({t: db.scalar(c, f"SELECT COUNT(*) FROM {t}") for t in business},
+                db.scalar(c, f"SELECT COUNT(*) FROM audit_log WHERE action IN ({','.join('?' * len(writes))})", writes),
+                db.rows(c, "SELECT id, status FROM alerts ORDER BY id"))
+    before = counts()
+    aid = db.scalar(c, "SELECT id FROM alerts WHERE code = 'BLACKLIST' ORDER BY id LIMIT 1")
+    attempts = [("guard1", "prepare_visitor_pass", "visitor_pass", {"plate": "XVK 2201", "unit_no": "B-05-1", "hours": 3}),
+                ("police1", "prepare_list_entry", "list_entry", {"list": "watch", "plate": "XSN 7310", "reason": "case IP/2026/114"}),
+                ("police1", "prepare_alert_status_change", "alert_status", {"alert_id": aid, "to": "resolved", "note": "checked"}),
+                ("traffic1", "prepare_reveal_request", "reveal", {"plate": "WTQ 9809"})]
+    for name, tool_name, kind, args in attempts:
+        u = user(c, name)
+        assert tool_name not in [d["name"] for d in tools.definitions(u.role)]          # not offered to the model
+
+        def script(messages, tool_defs, tool_name=tool_name, args=args):
+            if first_call(messages):
+                assert tool_name not in [d["name"] for d in tool_defs]
+                return [tool(tool_name, **args)]                                    # a model that calls it anyway
+            assert "read-only" in last_tool_result(messages)["error"]
+            return [text("The copilot is read-only: please do this on the page itself.")]
+        out, _ = ask(c, u, "Please do it for me.", script)
+        steps = out["done"]["display"]["steps"]
+        assert not out["cards"] and steps[0]["tool"] == tool_name and steps[0]["error"]
+        try:                                                                         # the service refuses too
+            actions.prepare(c, u, kind, args)
+            raise AssertionError(f"a {kind} card was prepared")
+        except Forbidden as e:
+            assert "read-only" in str(e)
+    # a card prepared before the change cannot be confirmed, through the API or directly; cancelling it still works
+    with actions_on():
+        old = actions.prepare(c, user(c, "guard1"), "visitor_pass", {"plate": "XVK 2203", "unit_no": "B-05-3"})
+    gc = W.client(app, "guard1")
+    r = gc.post(f"/api/v1/copilot/actions/{old['id']}/confirm", json={"fields": {}})
+    assert r.status_code == 403 and "read-only" in r.json()["detail"]
+    try:
+        actions.confirm(c, user(c, "guard1"), old["id"])
+        raise AssertionError("a card was confirmed while read-only")
+    except Forbidden:
+        pass
+    assert db.scalar(c, "SELECT status FROM copilot_actions WHERE id = ?", (old["id"],)) == "pending"
+    assert gc.post(f"/api/v1/copilot/actions/{old['id']}/cancel").json()["status"] == "cancelled"
+    # a masked role gets no full plate: the search says where to ask for one, and the plate stays masked
+    t = tools.Ctx(c, replace(user(c, "traffic1"), via="assistant"))
+    r = tools.execute(t, "search_plates", {"purpose": "Traffic study", "plate": "WTQ 9809"})
+    assert r.payload["needs_reveal"] and "records" not in r.payload and "Show full plate" in r.payload["message"]
+    assert "prepare_" not in r.payload["message"] and W.search(W.client(app, "traffic1"), plate="WTQ 9809").status_code == 403
+    # nothing changed: no business row, no write in the audit log, every alert keeps its status
+    assert counts() == before
+    # what the model and the panel are told
+    assert not any("prepare_" in b["text"] for r_ in tools.ALL for b in prompts.system_blocks(r_))
+    s = W.client(app, "police1").get("/api/v1/copilot/status").json()
+    assert s["actions_enabled"] is False and not any(n.startswith("prepare_") for n in s["tools"])
+    # audit rows may be added (the questions and searches are logged) and the chain still verifies
+    assert db.scalar(c, "SELECT COUNT(*) FROM audit_log WHERE action = 'copilot_question'") >= len(attempts)
+    assert W.client(app, "admin1").get("/api/v1/audit/verify").json()["ok"]
 
 
 # ---------------------------------------------------------------------------- explanations, SOP, legal

@@ -602,7 +602,7 @@ laptop: no WSL / Docker, so the first GitHub run is the Linux check).
   page needs no new data access.
 - **Push notifications:** every alert is created by one function, the single hook point.
 - **AI assistant:** built as SECS Copilot ([COPILOT_EN.md](COPILOT_EN.md)): the service functions are its tools
-  (section 4), called as the logged-in user; write actions are cards the user confirms.
+  (section 4), called as the logged-in user; it is read-only this semester (its action cards are switched off).
 
 ## 12. Build order
 

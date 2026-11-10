@@ -5,7 +5,9 @@ call of any other tool is refused (`execute`), and each tool calls the same serv
 checks the role again, scopes cameras and sites, masks plates and writes the audit row (marked via=assistant). The
 assistant has no SQL of its own. Read tools return compact JSON with a `ref` for every record (S: sighting, A: alert,
 E: lane event, G: gate access event, P: visitor pass); the refs become the citation chips of the panel. The
-prepare_* tools never write: they create action cards (actions.py) that the user confirms or cancels.
+prepare_* tools never write: they create action cards (actions.py) that the user confirms or cancels. While the
+copilot is read-only (config.ACTIONS_ENABLED is False, plan Rev2) they are offered to no role and a call to one is
+refused, so the model can only read.
 
 Inputs are validated against each tool's pydantic model before anything runs (the request streams tool input
 eagerly, so the API does not validate it); an invalid input goes back to the model as an error result to retry.
@@ -36,7 +38,7 @@ from ..services import reports as report_svc
 from ..services import traffic as traffic_svc
 from ..services.common import ALERT_TITLE
 from ..settings import PURPOSES, REVEAL_REASONS
-from . import actions, derived, explain
+from . import actions, config, derived, explain
 
 Purpose = Literal[tuple(PURPOSES)]                          # type: ignore[valid-type]
 AlertCode = Literal[tuple(ALERT_TITLE)]                     # type: ignore[valid-type]
@@ -102,9 +104,14 @@ def schema(model: Type[BaseModel]) -> Dict[str, Any]:
     return clean(model.model_json_schema())
 
 
+def offered(t: Tool, role: str) -> bool:
+    """The role may use the tool, and it is not an action tool while the copilot is read-only."""
+    return role in t.roles and (config.ACTIONS_ENABLED or not t.action)
+
+
 def definitions(role: str) -> List[Dict[str, Any]]:
     """The tools offered to a role, in a fixed order (the tool list is part of the cached prompt prefix)."""
-    return [t.definition() for t in TOOLS.values() if role in t.roles]
+    return [t.definition() for t in TOOLS.values() if offered(t, role)]
 
 
 @dataclass
@@ -134,6 +141,8 @@ def execute(ctx: Ctx, name: str, raw: Any) -> Result:
     t = TOOLS.get(name)
     if t is None or ctx.user.role not in t.roles:
         return Result({"error": f"the tool {name} is not available to the {ctx.user.role} role"}, True)
+    if t.action and not config.ACTIONS_ENABLED:                    # read-only: refused even if the model calls it
+        return Result({"error": config.READ_ONLY}, True)
     try:
         args = t.model.model_validate(raw if isinstance(raw, dict) else {})
     except ValidationError as e:
@@ -294,8 +303,9 @@ def search_plates(ctx: Ctx, a: SearchIn) -> Dict[str, Any]:
     except Forbidden as e:
         if ctx.user.masked and fuzzy.compact(a.plate):
             return {"needs_reveal": True, "plate": fuzzy.compact(a.plate),
-                    "message": f"{e}. This role sees masked plates: offer prepare_reveal_request with this plate; the "
-                               f"user chooses the reason on the card. Do not search another way."}
+                    "message": f"{e}. This role sees masked plates and the copilot is read-only: tell the user to "
+                               f"use 'Show full plate' on the Plate search page (searching there by the plate number "
+                               f"asks for a reason and is logged). Do not search another way."}
         raise
     return {"total": page.total, "shown": len(page.items), "plates_masked": ctx.user.masked,
             "records": [_sighting(ctx, s, a.purpose) for s in page.items], **_more(page.total, len(page.items))}
@@ -694,7 +704,7 @@ def admin_status(ctx: Ctx, a: EmptyIn) -> Dict[str, Any]:
             "assistant_cost_per_question_usd": u["cost_per_question"]}
 
 
-# ---------------------------------------------------------------------------- prepared actions (confirmation cards)
+# ---------------------------------------------------------------------------- prepared actions (cards; off while read-only)
 def _card(ctx: Ctx, kind: str, params: Dict[str, Any]) -> Dict[str, Any]:
     c = actions.prepare(ctx.conn, ctx.user, kind, params, ctx.conversation_id)
     ctx.cards.append(c)
@@ -767,4 +777,4 @@ def prepare_reveal_request(ctx: Ctx, a: RevealIn) -> Dict[str, Any]:
 
 
 def tools_by_role() -> Dict[str, List[str]]:
-    return {r: [t.name for t in TOOLS.values() if r in t.roles] for r in ALL}
+    return {r: [t.name for t in TOOLS.values() if offered(t, r)] for r in ALL}

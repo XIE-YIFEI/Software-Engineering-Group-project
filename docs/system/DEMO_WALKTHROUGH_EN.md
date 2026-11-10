@@ -152,7 +152,8 @@ exits come from the guard's **Exited** button.
 
 ## 6. SECS Copilot (the AI assistant)
 
-The assistant's own defence script (the traffic manager hitting the masking guard and revealing with a reason, the
-guard registering a visitor through an action card, the police officer tracing a cloned plate with citation chips,
+The assistant's own defence script (the traffic manager hitting the masking guard and revealing on the Plate search
+page, the guard asking the read-only copilot to register a visitor and being sent to the page, the police officer
+tracing a cloned plate with citation chips,
 "AI explain" and the case summary in the evidence pack, the daily review) is in [COPILOT_EN.md](COPILOT_EN.md),
 section 12. Without an API key the panel runs in offline mode (quick questions, labelled "Offline: templates, not AI").

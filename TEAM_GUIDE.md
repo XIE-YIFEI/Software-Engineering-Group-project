@@ -864,7 +864,7 @@ $env:ANTHROPIC_API_KEY = "<密钥>"; .venv\Scripts\python -m webapp
 | 功能 | 谁用 | 在哪里 |
 |---|---|---|
 | 助手面板：中 / 英 / 马来文提问，流式回答，显示工具步骤；提到的记录都是可点击的引用标签（编号 · 车牌（按角色打码）· 时间） | 所有角色 | 每页顶部的“✦ Copilot”按钮；Copilot 页面 |
-| 操作卡片：访客通行证、名单条目、告警状态、显示完整车牌申请；按“确认”之前不写入；审计记为 `via: assistant` | 保安、交警；交通管理 / 管理员（显示申请） | 回答中 |
+| 本学期只读（计划修订版 2）：四类操作卡片（访客通行证、名单条目、告警状态、显示完整车牌申请）已关闭，即使用户愿意确认，服务端也拒绝；助手会指出用户可以去哪个页面操作；卡片代码保留休眠，留给春季计划（`webapp/copilot/config.py` 里的 `ACTIONS_ENABLED = False`） | 所有角色 | 回答中 |
 | AI explain · AI 解读：告警如何由存储数值算出、SOP 步骤（`webapp/sop.yaml`）、法条（`webapp/legal.yaml`） | 交警、保安、管理员 | 告警中心 |
 | 案件摘要（附进证据包）、每日交通与拥堵回顾 | 交警；交通管理 | 告警中心；报表 |
 | 图像检查（VLM，默认关闭）：临时车牌的第二次读取、TYPE_MISMATCH / DUPLICATE 的外观比对 | 交警 | 车牌检索；告警中心 |
@@ -872,7 +872,7 @@ $env:ANTHROPIC_API_KEY = "<密钥>"; .venv\Scripts\python -m webapp
 ### 14.3 代码结构和怎样加一个工具
 
 `webapp/copilot/`：`tools.py`（工具 = 服务函数的薄封装）、`agent.py`（对话循环）、`llm.py`（Anthropic SDK 与测试用假模型）、
-`prompts.py`（冻结的系统提示词）、`actions.py`（卡片）、`numbers.py`（数字核对）、`explain.py` + `sop.py`、`documents.py`、
+`prompts.py`（冻结的系统提示词）、`actions.py`（卡片，只读期间休眠）、`numbers.py`（数字核对）、`explain.py` + `sop.py`、`documents.py`、
 `vlm.py`、`offline.py`、`store.py`、`eval/`。加一个工具：在 `services/` 里有对应函数 → 在 `tools.py` 写一个 pydantic 输入
 模型和 `@tool(...)` 函数（指定哪些角色可用，返回带 `ref` 的紧凑 JSON，需要的推导数字也在这里算好）→ 在
 `webapp/tests/test_copilot.py` 加测试。改提示词或工具后，已有会话会自动开新会话。
@@ -880,18 +880,20 @@ $env:ANTHROPIC_API_KEY = "<密钥>"; .venv\Scripts\python -m webapp
 ### 14.4 隐私规则（不要破坏）
 
 - 助手只调用服务函数，带着当前用户的角色：权限、打码、审计全部继承；没有自己的 SQL。
-- 打码角色要看完整车牌只有一条路：助手准备“显示完整车牌”卡片，由用户选择理由；助手绝不自行显示，也绝不建议换账号。
+- 助手是只读的：不修改、也不准备任何修改；不要加会写入的工具（重新开启休眠的操作卡片需要单独审查的修改）。
+- 打码角色要看完整车牌只有一条路：在车牌检索页用“Show full plate”，由用户选择理由；助手只会指向那里，绝不自行显示，
+  也绝不建议换账号。
 - 真实车辆被隐去的违规只有数量，没有任何工具返回细节；模拟数据始终标注。
 - 发送给 Anthropic 的是问题和该角色的工具结果（打码角色是打码后的）；图像只在开启图像检查后、逐张确认才发送。会话
   30 天后删除。措辞：遵循 PDPA 2010 的数据最小化原则；PDPA 不适用于联邦和州政府。
 
 ### 14.5 测试与评测
 
-`python webapp/tests/test_copilot.py`：19 个测试，用假模型，不联网、不需要密钥，已加入 CI。评测集 32 个问题
+`python webapp/tests/test_copilot.py`：20 个测试，用假模型，不联网、不需要密钥，已加入 CI。评测集 32 个问题
 （`webapp/copilot/eval/questions.yaml`，期望答案从数据库计算）：`--dry-run oracle` 得 32/32、`--dry-run null` 得 0/32，验证
 了评分器。在真实模型上跑评测要花钱（估算每题约 0.04-0.10 美元），需先同意费用并用 `--approve-harness` 批准。
 
 ### 14.6 局限
 
-SOP 是项目组写的草稿（`status: draft`，审阅后改为 `reviewed`）；数字核对读不了用文字写的数字；离线模板只有中英文；
+SOP 由项目组编写，已经组员审阅（`status: reviewed`）；数字核对读不了用文字写的数字；离线模板只有中英文；
 马来文回答取决于模型；每题费用在实测前只是估算。详见 [COPILOT_ZH.md](docs/system/COPILOT_ZH.md) 第 10 节。

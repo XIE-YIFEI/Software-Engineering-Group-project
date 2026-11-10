@@ -1,7 +1,7 @@
 /* SECS Copilot panel: a slide-in panel on every page (button "Copilot" in the top bar) and the full /assistant page.
    Answers stream from POST /api/v1/copilot/chat (server-sent events): text, tool steps, citation chips, action cards
-   and the number check. Model text is rendered with a small Markdown subset built from DOM nodes (textContent only,
-   never innerHTML), so neither the model nor the data can inject markup. */
+   (none while the copilot is read-only) and the number check. Model text is rendered with a small Markdown subset
+   built from DOM nodes (textContent only, never innerHTML), so neither the model nor the data can inject markup. */
 const Copilot = (() => {
   const { el, clear, $, get, post, api, pill, plate, dt, time, fail, toast, S } = App;
   const LANGS = { en: "EN", zh: "中文", ms: "BM" };
@@ -105,7 +105,7 @@ const Copilot = (() => {
         const s = await get(`/api/v1/sightings/${c.id}`, { purpose: c.purpose || "Alert follow-up" });
         row("Camera", s.camera_name); row("Reading", s.status === "TENTATIVE" ? "provisional" : "confirmed"); row("Vehicle", s.vtype);
         if (s.alerts.length) row("Alerts", el("span", { class: "row", style: { gap: "6px" } }, ...s.alerts.map((a) => el("a", { href: `/alerts#${a.id}` }, a.title))));
-        if (s.can_reveal) body.append(el("p", { class: "notice info", text: "The plate is masked for your role. Ask the copilot to prepare a reveal request, or use “Show full plate” in the plate search; both need a reason and are logged." }));
+        if (s.can_reveal) body.append(el("p", { class: "notice info", text: "The plate is masked for your role. Use “Show full plate” in the plate search: it needs a reason and is logged. The copilot is read-only and cannot reveal plates." }));
       } catch (e) { body.append(el("p", { class: "muted", text: e.message })); }
     }
     if (c.video) {
@@ -161,7 +161,8 @@ const Copilot = (() => {
     return box;
   }
 
-  /* An action card: nothing happens until Confirm; the fields are the user's to check and complete. */
+  /* An action card: nothing happens until Confirm; the fields are the user's to check and complete. While the copilot
+     is read-only none is prepared, and the server refuses Confirm on one prepared earlier (its message shows here). */
   function cardView(card) {
     const box = el("div", { class: "cp-card " + card.status });
     function render(c) {
@@ -234,8 +235,8 @@ const Copilot = (() => {
       const masked = S.user.masked;
       clear(list).append(el("div", { class: "cp-intro" },
         el("p", { text: "Ask about plates, alerts, the gate, traffic or the congestion forecast. The copilot answers only from the system's own records, with your role's permissions; every record it names is a clickable chip." }),
-        el("p", { class: "muted", text: masked ? "Your role sees masked plates: for a full plate the copilot prepares a reveal request, and you choose the reason." :
-          "It can prepare changes (a visitor pass, a list entry, an alert status) as cards: nothing is written until you press Confirm." }),
+        el("p", { class: "muted", text: masked ? "Read-only: the copilot cannot change records or reveal plates. Your role sees masked plates: for a full plate, use “Show full plate” in the plate search (it needs a reason and is logged)." :
+          "Read-only: the copilot answers questions but cannot change records. Issue passes, edit lists and handle alerts on their own pages, as usual." }),
         status && !status.online ? el("p", { class: "notice warn", text: `Offline: ${status.reason}. The quick questions below still work (templates, not AI).` }) : null));
     }
     function newConversation() { conv = null; if (!page) remember(storeKey, null); clear(list); intro(); refreshConvs(); }

@@ -179,9 +179,10 @@
 
 ## 12. SECS Copilot（AI 助手）
 
-`python webapp/tests/test_copilot.py`（也在 CI 中运行）：19 个测试，用脚本化的假模型代替 Claude，不联网，不需要 API 密钥。
+`python webapp/tests/test_copilot.py`（也在 CI 中运行）：20 个测试，用脚本化的假模型代替 Claude，不联网，不需要 API 密钥。
 各测试覆盖的内容见 [COPILOT_ZH.md](COPILOT_ZH.md) 第 9 节：工具 schema 和按角色提供的工具；权限继承、打码和审计
-（`via: assistant`）；流式对话循环、引用标签和只追加的对话记录；数字核对；操作卡片（确认前不写入）；“AI 解读”的 SOP 和
+（`via: assistant`）；流式对话循环、引用标签和只追加的对话记录；数字核对；只读政策（四类 AI 操作被拒绝、数据不变、车牌
+不被解除打码）；休眠的操作卡片（在其测试中临时开启：确认前不写入）；“AI 解读”的 SOP 和
 法律来源；证据包中的案件摘要；每日回顾；离线模式；拒答和故障；频率限制和费用记录；保留期限；可选的图像检查；API 和
 页面；Anthropic SDK 实际发出的请求（模拟 HTTP 传输）；评测运行器的自检。
 

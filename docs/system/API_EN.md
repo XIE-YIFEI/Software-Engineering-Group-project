@@ -132,7 +132,7 @@ Roles: **P** police · **G** guard · **T** traffic · **A** admin. "masked" = p
 | `POST /copilot/chat` | all | body `{message, conversation_id, page}`; streams server-sent events: `meta`, `text`, `step`, `step_done`, `cite`, `card`, `offline`, `error`, `done` (the stored answer with its citations, cards, number check and cost) |
 | `POST /copilot/quick` | all (per role) | body `{id, lang}`: a quick question answered from tools and a template; works offline |
 | `GET /copilot/conversations` · `GET /copilot/conversations/{id}` · `DELETE /copilot/conversations/{id}` | the owner | the user's own conversations |
-| `POST /copilot/actions/{id}/confirm` · `POST /copilot/actions/{id}/cancel` | the owner of the card | body `{fields}`: run the prepared change through the ordinary service function (audit `via: assistant`); a missing note or reason returns 422 and the card stays pending |
+| `POST /copilot/actions/{id}/confirm` · `POST /copilot/actions/{id}/cancel` | the owner of the card | **read-only this semester: confirm returns 403 and runs nothing** (cancel still works). When actions are switched back on: body `{fields}`: run the prepared change through the ordinary service function (audit `via: assistant`); a missing note or reason returns 422 and the card stays pending |
 | `POST /copilot/alerts/{id}/explain` | P G A | body `{lang}`; streams `facts`, `text`, `done`: "AI explain" with the SOP steps and the legal references |
 | `POST /copilot/alerts/{id}/case-summary` · `GET /copilot/alerts/{id}/case-summary` | P | write / read the case summary added to the alert's evidence pack |
 | `POST /copilot/reviews/daily` · `GET /copilot/reviews/daily/latest` | T (P A may read) | body `{date, congestion_day, lang}`; streams the daily traffic and congestion review |
@@ -179,5 +179,5 @@ and inherit the same permissions, masking and audit (an assistant call is logged
 
 The models are in `webapp/models.py`; their JSON schemas are in `/openapi.json` (`components.schemas`). SECS Copilot
 ([COPILOT_EN.md](COPILOT_EN.md)) calls these functions as its tools, with the signed-in user, so it inherits the same
-permissions, masking and audit; its write actions (visitor passes, list entries, alert status changes, reveals) are
-action cards that run the service function only when the user confirms them.
+permissions, masking and audit. This semester it is read-only: its four write actions (visitor passes, list entries,
+alert status changes, reveals) are switched off, and the action-card endpoints refuse to confirm (HTTP 403).

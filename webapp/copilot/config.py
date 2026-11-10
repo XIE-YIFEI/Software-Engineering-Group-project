@@ -41,6 +41,16 @@ MAX_QUESTIONS = 12          # per conversation; then the panel starts a new one 
 ACTION_MINUTES = 30         # a prepared action card expires after this
 UNREACHABLE_PAUSE = 120     # seconds offline after the model service could not be reached
 
+# Autumn 2026 (development plan Rev2): the copilot is READ-ONLY. The four action tools (visitor pass, list entry,
+# alert status, full-plate reveal) are not offered to the model, a call to one is refused (tools.execute), and
+# actions.py refuses to prepare or confirm a card even when the user confirms one. The ordinary pages keep these
+# operations for the roles allowed them. A code constant, not a setting: turning the actions back on is a separate,
+# reviewed change (the prompt, the panel texts and the docs say read-only too). The tests switch it on only to keep
+# the dormant card code working.
+ACTIONS_ENABLED = False
+READ_ONLY = ("the copilot is read-only: it cannot issue passes, change lists or alert statuses, or reveal plates, and "
+             "it does not prepare these for confirmation. Do it on the page itself, with your role's own permissions.")
+
 
 def price(model: str) -> Tuple[float, float, float, float]:
     if model in MODELS:
@@ -137,4 +147,5 @@ def status(conn: sqlite3.Connection, cfg: Optional[CopilotConfig] = None) -> Dic
     return {"online": online, "reason": reason, "model": cfg.model, "model_label": cfg.model_label,
             "effort": cfg.effort, "vlm_enabled": cfg.vlm_enabled, "spent_today_usd": round(spent, 4),
             "daily_budget_usd": cfg.daily_budget_usd, "questions_per_hour": cfg.questions_per_hour,
-            "retention_days": cfg.retention_days, "fallbacks": bool(MODELS.get(cfg.model, {}).get("fallbacks"))}
+            "retention_days": cfg.retention_days, "fallbacks": bool(MODELS.get(cfg.model, {}).get("fallbacks")),
+            "actions_enabled": ACTIONS_ENABLED}

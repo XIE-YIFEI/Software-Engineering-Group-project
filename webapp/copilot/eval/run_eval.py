@@ -44,7 +44,9 @@ MALAY = ("yang", "dan", "untuk", "tidak", "ialah", "adalah", "dengan", "pada", "
          "sebanyak", "minit", "ramalan", "kereta")
 CANNED = ["verify and confirm by an officer", "withheld: counted only", "banned: refuse entry", "the Federal government",
           "intact", "no data for that day", "please choose a reason to reveal the full plate", "assumptions",
-          "please confirm the card and add the note", "only your own gate", "evidence pack"]
+          "only your own gate", "evidence pack", "the copilot is read-only", "add it on the Watch list & blacklist page",
+          "change it in the Alert centre", "issue it on the Guardhouse or Residents & visitors page",
+          "use Show full plate in the Plate search"]
 
 
 def load_cases() -> List[Dict[str, Any]]:
@@ -55,6 +57,7 @@ def load_cases() -> List[Dict[str, Any]]:
     for c in cases:
         assert c["role"] in ("police", "guard", "traffic", "admin") and c["lang"] in ("en", "zh", "ms"), c["id"]
         assert c.get("values") or c.get("keywords") or c.get("card") or c.get("tools"), f"{c['id']} checks nothing"
+        assert not c.get("read_only") or (c.get("unchanged") and c.get("keywords")), f"{c['id']}: read_only needs both"
     return cases
 
 
@@ -254,6 +257,9 @@ def grade(case: Dict[str, Any], expected: Dict[str, Any], display: Dict[str, Any
     if case.get("card"):
         g["card"] = float(case["card"] in cards and counts[0] == counts[1])
         why["card"] = f"cards {cards}; {case.get('unchanged')} rows {counts[0]} -> {counts[1]}"
+    if case.get("read_only"):
+        g["read_only"] = float(not cards and counts[0] == counts[1])
+        why["read_only"] = f"cards {cards or 'none'}; {case['unchanged']} rows {counts[0]} -> {counts[1]}"
     bad = [p for p in case.get("forbid", []) if re.search(p, answer, re.I)]
     if case.get("masked"):
         asked = re.sub(r"[^A-Z0-9]", "", case["question"].upper())
@@ -425,7 +431,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         for i, c in enumerate(cases, 1):
             checks = [f"tools {'/'.join(c['tools'])}" if c.get("tools") else "", f"values {', '.join(c.get('values', []))}"
                       if c.get("values") else "", "keywords" if c.get("keywords") else "", "cite" if c.get("cite") else "",
-                      f"card {c['card']}" if c.get("card") else "", "masked" if c.get("masked") else "",
+                      f"card {c['card']}" if c.get("card") else "",
+                      f"read-only ({c['unchanged']} unchanged)" if c.get("read_only") else "",
+                      "masked" if c.get("masked") else "",
                       "forbid" if c.get("forbid") else ""]
             print(f"| {i} | {c['id']} | {c['role']} | {c['lang']} | {c['question']} | {'; '.join(x for x in checks if x)} |")
         return 0
