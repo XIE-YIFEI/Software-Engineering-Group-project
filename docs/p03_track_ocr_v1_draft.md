@@ -1,9 +1,11 @@
 # P03 Track/OCR Data Contract v1
 
-**Draft for review with Hanwen**
+**Draft — Track/OCR requirements confirmed by Hanwen; Alert section pending**
 
-Current branch: `yifei/recognition-checkpoints`. Per-read fields below are proposals,
-not implemented exports.
+Current branch: `yifei/recognition-checkpoints`. Section 1 describes implemented
+exports. Section 2 records the Track/OCR requirements confirmed by Hanwen;
+the per-read JSONL export is **not yet implemented**. P03 remains a Draft until
+the outstanding sections and interfaces are resolved.
 
 ## 1. Implemented: one vehicle summary in `plates[]`
 
@@ -34,29 +36,51 @@ FPS is source FPS divided by `frame_step`; summary times use
 `(int(start_sec * effective_fps) + frame) / effective_fps`. Partial files remain
 incomplete even after a normal finish; the existing final report is separate.
 
-## 2. Available in memory; per-read JSON is proposed
+## 2. Confirmed Track/OCR requirements — JSONL not yet implemented
 
-These values are available during processing but **not exported per read**.
-Left-column names are proposals.
+For v1, retain one raw reading from each selected OCR attempt. Do not export
+top-k candidates or per-character probabilities. Write per-read records to a
+**separate JSONL file, one read event per line**; preserve compatibility with
+the existing `plates.json` summary and checkpoint formats.
 
-| Proposed field | Existing source / distinction |
+Overlapping plate boxes may cause multiple backend OCR calls before selection.
+Combine those calls into one read event containing the selected result and the
+actual backend-call count, rather than emitting one event per crop call.
+
+The confirmed per-read fields are:
+
+| Field | Required meaning / existing source |
 | --- | --- |
-| `track_id`, `frame`, `time_sec` | Current vehicle ID and frame; source-video time can be derived using the same offset rule. |
-| `raw_text` | `OcrRead.raw`, before syntax correction: Fast OCR's unconstrained top-1 text (padding removed), or EasyOCR's joined fragments. Failed calls can return `None`. |
-| `voter_input_text` | `OcrRead.text`, decoded compact/non-standard text submitted only if admission conditions pass. The voter may normalize/parse it further; it is not the raw text or final summary plate. |
-| `ocr_confidence`, `ocr_valid_format` | `OcrRead.conf` and `.valid`. Confidence describes the returned text, not necessarily the raw text when syntax decoding changed it. |
+| `track_id` | Current run-local vehicle tracker ID. |
+| `frame` | Current frame in 1-based processing-window coordinates, following Section 1; not the original source frame index when frame stepping is used. |
+| `time_sec` | Seconds on the original video timeline, including the selected start offset, using the same effective-FPS formula and two-decimal convention as Section 1. |
+| `raw_text` | Selected `OcrRead.raw`, before syntax correction: Fast OCR's unconstrained top-1 text (padding removed), or EasyOCR's joined fragments. Preserve empty or missing readings instead of dropping the event. |
+| `voter_input_text` | Selected `OcrRead.text`, the decoded compact/non-standard text available for submission to the voter. Its presence alone does not mean it was submitted. The voter may normalize/parse it further; it is not the raw text or final summary plate. |
+| `ocr_valid_format` | Selected `OcrRead.valid`: the OCR syntax verdict, independent of whether the reading was submitted to the voter. |
+| `ocr_confidence` | Selected `OcrRead.conf`. Confidence describes the returned text, not necessarily the raw text when syntax decoding changed it. |
 | `crop_quality_score` | `PlateQuality.score` (`q.score`), separate from OCR confidence; `sharpness`, `brightness`, and gate flag `ok` are also available. |
-| `voting_quality`, `accepted_for_vote` | Current quality input is `q.score * min(1, plate_width / ocr_ref_plate_w)^2`; the voter combines it with OCR confidence. Admission/rejection must be captured explicitly if exported. |
+| `accepted_for_vote` | Whether this reading was actually submitted to the voter. Record the actual submission decision, not an inference from format validity or later retention in the voting bucket. |
+| `reject_reason` | Reason an empty or rejected reading was not submitted to the voter; record it whenever `accepted_for_vote` is `false`. |
+| `n_backend_calls` | Actual number of backend OCR calls combined into this event, including calls on overlapping boxes before result selection. Do not use `n_reads` as a substitute. |
 
-The voter retains bounded accepted readings, not a raw history. `n_reads` is not
-an exact backend-call count: overlapping boxes can trigger up to three crop OCR
-calls before selection. `OcrRead` returns one result, not top-k text candidates;
-Fast OCR's internal slot probabilities would need additional export work.
+Retain empty and rejected readings with `accepted_for_vote: false` and a reason.
+An invalid format does **not** automatically mean rejection: a non-standard
+reading can still be submitted to the voter. If it was submitted, record
+`accepted_for_vote: true` even when `ocr_valid_format` is `false`.
+
+These are confirmed requirements, not a description of an existing JSONL writer.
+Some values already exist in memory, but event capture, rejection reasons and
+backend-call accounting still require implementation. The voter retains bounded
+accepted readings, not a raw history. Its current quality input is
+`q.score * min(1, plate_width / ocr_ref_plate_w)^2`, combined with OCR confidence;
+this derived value is distinct from `crop_quality_score` and is not an additional
+v1 per-read field.
 
 ## 3. Example: existing checkpoint shape
 
 Based on the real 212/900-frame interruption output; image paths are shortened
-for illustration. No proposed per-read fields are included.
+for illustration. This is an implemented checkpoint example, not a per-read
+JSONL example; no per-read fields are included.
 
 ```json
 {
@@ -82,18 +106,17 @@ for illustration. No proposed per-read fields are included.
 }
 ```
 
-## 4. Questions for Hanwen
+## 4. Outstanding Alert section and interface discussion
 
-1. For v1, is one raw reading per selected OCR attempt sufficient, or are multiple
-   candidates from the same attempt required? If multiple, does this mean results
-   from different crop boxes, alternative decoded strings, or character probabilities?
-2. Should rejected and empty OCR results be retained, or only readings admitted
-   to voting? What defines one read event when several backend calls occur?
-3. Confirm per-read names, frame/time conventions, and the separation of raw text,
-   voter input, confidence, and crop quality.
-4. **Alert fields and semantics are for Hanwen to define.** The current writer
+1. **Alert fields and semantics are for Hanwen to add.** The current writer
    conditionally emits `alerts` when registry checking is enabled; this draft
    does not define or change its payload or propose a new Alert schema.
+2. **Stop signals and timeout values remain open for the interface discussion
+   with Shiyu.** No stop-signal mechanism or timeout value is agreed in this
+   draft.
+
+The Track/OCR decisions in Section 2 are confirmed. The per-read JSONL export
+remains to be implemented, and the overall P03 document remains a Draft.
 
 Checked against [pipeline](../alpr/pipeline.py), [OCR](../alpr/ocr.py),
 [voting](../alpr/voting.py), [quality](../alpr/quality.py), the tracked
