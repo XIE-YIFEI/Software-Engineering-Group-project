@@ -40,7 +40,8 @@ def _process_frame(self, frame, idx):
 
 
 def _run_video(source, out, marker=None, stop_mode=None, gate=False, interval=0, evidence=False):
-    cfg = AlprConfig(source=str(source), out=str(out), headless=True, start_sec=1.2, frame_step=2)
+    cfg = AlprConfig(source=str(source), out=str(out), headless=True, start_sec=1.2, frame_step=2,
+                     profile="checkpoint_test")
     if evidence or stop_mode == "evidence_writing":
         cfg.evidence_dir = str(Path(out).parent / "evidence")
     original_dump = json.dump
@@ -99,17 +100,23 @@ class CheckpointTests(unittest.TestCase):
         self.partial = self.out.with_suffix(".partial.json")
         self.final = self.out.with_suffix(".plates.json")
 
+    def _metadata(self, end):
+        return {"source": str(self.source), "profile": "checkpoint_test", "fps": 5.0,
+                "window_sec": [1.2, end]}
+
     def test_empty_checkpoint_exists_before_models_load(self):
         self.partial.write_text('{"complete": true, "plates": ["stale"]}', encoding="utf-8")
         capture = cv2.VideoCapture(str(self.source))
         self.addCleanup(capture.release)
-        cfg = AlprConfig(source=str(self.source), out=str(self.out), headless=True)
+        cfg = AlprConfig(source=str(self.source), out=str(self.out), headless=True,
+                         start_sec=1.234, frame_step=2, profile="checkpoint_test")
         with patch.object(pipeline.cv2, "VideoCapture", return_value=capture), \
                 patch.object(AlprPipeline, "__init__", side_effect=RuntimeError("model load stopped")):
             with self.assertRaisesRegex(RuntimeError, "model load stopped"):
                 pipeline.run(cfg)
         self.assertEqual(json.loads(self.partial.read_text(encoding="utf-8")),
-                         {"complete": False, "frames_processed": 0, "plates": []})
+                         {**self._metadata(1.234), "window_sec": [1.234, 1.234],
+                          "complete": False, "frames_processed": 0, "plates": []})
         self.assertFalse(self.final.exists())
 
     def _terminate_worker(self, mode):
@@ -132,6 +139,11 @@ class CheckpointTests(unittest.TestCase):
         report = json.loads(self.partial.read_text(encoding="utf-8"))
         self.assertIs(report["complete"], False)
         self.assertEqual(report["frames_processed"], 2)
+        for key, value in self._metadata(1.6).items():
+            self.assertEqual(report[key], value)
+        self.assertIsInstance(report["fps"], float)
+        self.assertIsInstance(report["source"], str)
+        self.assertIsInstance(report["profile"], str)
         row, = report["plates"]
         self.assertEqual(row["compact"], "WA1234B")
         self.assertEqual((row["first_sec"], row["last_sec"]), (1.4, 1.6))
@@ -170,7 +182,7 @@ class CheckpointTests(unittest.TestCase):
             with self.assertRaisesRegex(OSError, "scene save failed"):
                 _run_video(self.source, self.out, evidence=True)
         self.assertEqual(json.loads(self.partial.read_text(encoding="utf-8")),
-                         {"complete": False, "frames_processed": 0, "plates": []})
+                         {**self._metadata(1.2), "complete": False, "frames_processed": 0, "plates": []})
 
     def test_replace_failure_preserves_previous_checkpoint(self):
         pipeline._write_json_atomic(str(self.partial), {"complete": False, "frames_processed": 2, "plates": []})
@@ -188,13 +200,36 @@ class CheckpointTests(unittest.TestCase):
         partial = json.loads(self.partial.read_text(encoding="utf-8"))
         self.assertEqual(set(report), {"source", "profile", "fps", "frames", "window_sec", "plates", "processing"})
         self.assertEqual((report["fps"], report["frames"], report["window_sec"]), (5.0, 9, [1.2, 3.0]))
-        self.assertEqual(partial, {"complete": False, "frames_processed": 9, "plates": report["plates"]})
+        self.assertEqual(partial, {**self._metadata(3.0), "complete": False,
+                                   "frames_processed": 9, "plates": report["plates"]})
+        for key in ("source", "profile", "fps", "window_sec"):
+            self.assertEqual(partial[key], report[key])
+            self.assertIs(type(partial[key]), type(report[key]))
         self.assertEqual(report["plates"][0]["last_sec"], 3.0)
 
     def test_gated_frames_still_update_progress(self):
         self.assertEqual(_run_video(self.source, self.out, gate=True), 0)
         self.assertEqual(json.loads(self.partial.read_text(encoding="utf-8")),
-                         {"complete": False, "frames_processed": 9, "plates": []})
+                         {**self._metadata(3.0), "complete": False, "frames_processed": 9, "plates": []})
+
+    def test_periodic_windows_follow_saved_progress(self):
+        snapshots = []
+        original_write = pipeline._write_json_atomic
+
+        def capture(path, report):
+            original_write(path, report)
+            snapshots.append(json.loads(self.partial.read_text(encoding="utf-8")))
+
+        with patch.object(pipeline, "_write_json_atomic", side_effect=capture):
+            self.assertEqual(_run_video(self.source, self.out), 0)
+        self.assertEqual([s["frames_processed"] for s in snapshots], [0, *range(1, 10), 9])
+        self.assertEqual([s["window_sec"] for s in snapshots],
+                         [[1.2, end] for end in [1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8, 3.0, 3.0]])
+        for snapshot in snapshots:
+            self.assertEqual(snapshot["fps"], 5.0)  # 10 source FPS / frame_step 2
+            self.assertEqual(snapshot["source"], str(self.source))
+            self.assertEqual(snapshot["profile"], "checkpoint_test")
+            self.assertIs(snapshot["complete"], False)
 
 
 if __name__ == "__main__":

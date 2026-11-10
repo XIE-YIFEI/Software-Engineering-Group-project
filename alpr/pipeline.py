@@ -856,6 +856,17 @@ def _write_json_atomic(path: str, report: Dict) -> None:
             os.unlink(temp_path)
 
 
+def _report_metadata(cfg: AlprConfig, fps: float, frames_processed: int) -> Dict:
+    """Shared video metadata; fps is the effective (frame-stepped) rate.
+
+    A zero-progress window stays exactly at the configured start, including
+    starts with more than two decimal places.
+    """
+    end = round(cfg.start_sec + frames_processed / fps, 2) if frames_processed else cfg.start_sec
+    return {"source": cfg.source, "profile": cfg.profile, "fps": fps,
+            "window_sec": [cfg.start_sec, end]}
+
+
 def run(cfg: AlprConfig) -> int:
     if not os.path.exists(cfg.source):
         print(f"Error: source not found: {cfg.source}")
@@ -879,7 +890,8 @@ def run(cfg: AlprConfig) -> int:
 
     os.makedirs(os.path.dirname(cfg.out) or ".", exist_ok=True)
     partial_path = os.path.splitext(cfg.out)[0] + ".partial.json"
-    _write_json_atomic(partial_path, {"complete": False, "frames_processed": 0, "plates": []})
+    _write_json_atomic(partial_path, {**_report_metadata(cfg, fps, 0),
+                                     "complete": False, "frames_processed": 0, "plates": []})
     out_size = tuple(cfg.dashboard_size) if cfg.hud_mode == "dashboard" else (width, height)
     writer = None if cfg.headless else VideoOut(cfg.out, fps, out_size)
 
@@ -904,10 +916,12 @@ def run(cfg: AlprConfig) -> int:
         nonlocal last_partial_save
         now = time.monotonic()
         if force or now - last_partial_save >= PARTIAL_SAVE_INTERVAL_SEC:
+            saved_frames = n
             rows = pipe.summary(summary_start)
             if cfg.evidence_dir:
                 pipe.write_evidence(rows, cfg.evidence_dir, summary_start)
-            _write_json_atomic(partial_path, {"complete": False, "frames_processed": n,
+            _write_json_atomic(partial_path, {**_report_metadata(cfg, fps, saved_frames),
+                                             "complete": False, "frames_processed": saved_frames,
                                              "plates": rows})
             last_partial_save = now
 
@@ -959,8 +973,7 @@ def run(cfg: AlprConfig) -> int:
         print(f"  FR03 uncertain diagnostics -> {diagnostic_path}")
     if cfg.evidence_dir:
         pipe.write_evidence(rows, cfg.evidence_dir, start)
-    report = {"source": cfg.source, "profile": cfg.profile, "fps": fps, "frames": n,
-              "window_sec": [cfg.start_sec, round(cfg.start_sec + n / fps, 2)], "plates": rows,
+    report = {**_report_metadata(cfg, fps, n), "frames": n, "plates": rows,
               "processing": {"model_backend": "openvino" if pipe._vehicle_args else "pt",
                              "openvino_device": cfg.openvino_device if pipe._vehicle_args else None,
                              "headless": cfg.headless, "read_plates": cfg.read_plates,
