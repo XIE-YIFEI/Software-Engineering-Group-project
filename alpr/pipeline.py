@@ -1,7 +1,8 @@
 """ALPR pipeline: vehicle detection + ByteTrack, plate detection, quality gate, OCR, per-track voting,
 plate log (one entry per vehicle) and traffic-flow counting.
 
-`AlprPipeline.process_frame` is model-driven but side-effect free w.r.t. I/O; `run` handles the video.
+`AlprPipeline.process_frame` is model-driven; optional P03 JSONL events are written during OCR.
+`run` handles the video and vehicle summaries.
 
 Tracking notes (each fixed a failure seen on real Malaysian footage):
 * class-agnostic NMS: a pickup is often detected as *car* and *truck* at once; class-aware NMS kept
@@ -25,8 +26,10 @@ the violation rules (never counted in the flow).
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import tempfile
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -45,6 +48,7 @@ from .hud import plate_image, render_dashboard, render_hud, render_summary
 from .lanes import Calibration, LaneMap
 from .lead import LeadSelector
 from .ocr import make_ocr
+from .ocr_events import OcrEventWriter
 from .plates import normalize, parse_plate
 from .quality import assess
 from .registry import Alert, PlateChecker, estimate_colour
@@ -58,6 +62,7 @@ STATUS_RANK = {ACQUIRING: 0, TENTATIVE: 1, CONFIRMED: 2}
 TRACKER_CFG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trackers", "bytetrack_alpr.yaml")
 APART_MAX_OVERLAP = 0.3   # two boxes overlapping less than this (of the smaller box) are two vehicles
 APART_MIN_FRAMES = 5      # ... seen like that in this many frames: never merged; identical plate = DUPLICATE
+PARTIAL_SAVE_INTERVAL_SEC = 5.0
 
 
 def openvino_dir(weights: str) -> str:
@@ -138,9 +143,11 @@ class LogEntry:
 
 
 class AlprPipeline:
-    def __init__(self, cfg: AlprConfig, ocr=None, fps: float = 25.0):
+    def __init__(self, cfg: AlprConfig, ocr=None, fps: float = 25.0,
+                 checker: Optional[PlateChecker] = None):
         self.cfg = cfg
         self.fps = fps
+        self.ocr_events = OcrEventWriter(cfg.ocr_reads_jsonl) if cfg.ocr_reads_jsonl else None
         self.vehicle_model, self._vehicle_args = load_detector(cfg.vehicle_model, cfg.model_backend, cfg.openvino_device)
         self.plate_model = self.plate_fallback = self.ocr = None
         self._plate_args: Dict = {}
@@ -158,7 +165,8 @@ class AlprPipeline:
         self.states: Dict[int, TrackState] = {}
         self.log: List[LogEntry] = []
         self.fps_ema = 0.0
-        self.checker = PlateChecker.from_config(cfg) if cfg.registry_enabled else None
+        self.checker = ((checker if checker is not None else PlateChecker.from_config(cfg))
+                        if cfg.registry_enabled else None)
         self.clock0 = (datetime.fromisoformat(cfg.video_start_time).replace(tzinfo=None) if cfg.video_start_time
                        else datetime.now())
         self._sim_pending = sorted(cfg.registry_sim_events, key=lambda ev: float(ev["at_sec"])) if self.checker else []
@@ -365,6 +373,7 @@ class AlprPipeline:
         first = cands[0][0]
         group = [first] + [b for b, _ in cands[1:] if _contain(b, first) > 0.5][:2]
         chosen, read = first, None
+        n_backend_calls = 0
         if len(group) > 1:
             crops = [self._crop(frame, (vx1 + b[0], vy1 + b[1], vx1 + b[2], vy1 + b[3])) for b in group]
             # OCR only when a reading would be taken from one of them: a far / blurry plate, or a vehicle
@@ -374,6 +383,7 @@ class AlprPipeline:
                 options = []
                 for b, c in zip(group, crops):
                     r = self.ocr.read_plate(c)
+                    n_backend_calls += 1
                     options.append(((r is not None and r.valid, r.conf if r else 0.0), b, r))
                 _, chosen, read = max(options, key=lambda o: o[0])
         px1, py1, px2, py2 = chosen
@@ -388,18 +398,31 @@ class AlprPipeline:
                                  "plate_box": [int(vx1 + px1), int(vy1 + py1), int(vx1 + px2), int(vy1 + py2)]}
 
         pw = px2 - px1
+        accepted_for_vote = False
+        reject_reason = "quality_gate" if not q.ok else "read_budget"
         if self._wants_read(st, q, pw):
             st.n_reads += 1
             st.best_ocr_q = max(st.best_ocr_q, q.score)
             st.best_read_w = max(st.best_read_w, pw)
             if read is None:
                 read = self.ocr.read_plate(crop)
+                n_backend_calls += 1
+            reject_reason = "empty_read" if read is None else "nonstandard_below_min_width"
             # A reading the OCR marks as no legal plate counts as evidence of a non-standard plate only
             # at (nearly) full resolution: far, blurry plates are often read as junk.
             if read and (read.valid or pw >= NONSTD_MIN_W_FRAC * cfg.ocr_ref_plate_w):
                 # a far plate (few pixels) is misread consistently, so its vote counts with resolution^2
                 weight_q = q.score * min(1.0, pw / cfg.ocr_ref_plate_w) ** 2
                 self.voter.add(v["track_id"], read.text, read.conf, weight_q, valid=read.valid)
+                accepted_for_vote = True
+                reject_reason = None
+
+        if n_backend_calls and self.ocr_events is not None:
+            self.ocr_events.write(
+                track_id=v["track_id"], frame=idx,
+                time_sec=(int(cfg.start_sec * self.fps) + idx) / self.fps,
+                read=read, crop_quality_score=q.score, accepted_for_vote=accepted_for_vote,
+                reject_reason=reject_reason, n_backend_calls=n_backend_calls)
 
     def _wants_read(self, st: TrackState, q, pw: int) -> bool:
         """Is a crop of quality `q` and width `pw` px read now? The OCR budget only bounds low-resolution
@@ -686,16 +709,22 @@ class AlprPipeline:
     def write_evidence(self, rows: List[Dict], out_dir: str, start_frame: int = 0) -> None:
         """evidence_dir: save each plate-log entry's best plate crop and the full frame it came from to `out_dir`
         and add their paths (+ frame number, time, vehicle and plate boxes in that frame) to its row of
-        `summary()` as `evidence`. Rows whose vehicle never had a sharp enough crop get no `evidence`."""
+        `summary()` as `evidence`. Image versions are immutable so earlier checkpoints stay readable.
+        Rows whose vehicle never had a sharp enough crop get no `evidence`."""
         os.makedirs(out_dir, exist_ok=True)
         entries = sorted((e for e in self.log if not e.simulated), key=lambda e: e.first_frame)
-        for i, (e, row) in enumerate(zip(entries, rows), 1):
+        for e, row in zip(entries, rows):
             if e.crop is None or e.scene is None:
                 continue
-            stem = os.path.join(out_dir, f"{i:03d}_{e.result.compact}").replace("\\", "/")
-            cv2.imwrite(stem + "_crop.jpg", e.crop, [cv2.IMWRITE_JPEG_QUALITY, 95])
-            with open(stem + "_scene.jpg", "wb") as f:
-                f.write(e.scene["jpg"])
+            ok, encoded = cv2.imencode(".jpg", e.crop, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            if not ok:
+                raise OSError("could not encode plate evidence")
+            crop_bytes, scene_bytes = encoded.tobytes(), e.scene["jpg"]
+            # Immutable image pairs keep earlier checkpoints valid during later saves.
+            version = hashlib.sha256(crop_bytes + scene_bytes).hexdigest()
+            stem = os.path.join(out_dir, version).replace("\\", "/")
+            _write_evidence_image(stem + "_crop.jpg", crop_bytes)
+            _write_evidence_image(stem + "_scene.jpg", scene_bytes)
             row["evidence"] = {"crop": stem + "_crop.jpg", "scene": stem + "_scene.jpg", "frame": e.scene["frame"],
                                "time_sec": round((start_frame + e.scene["frame"]) / self.fps, 2),
                                "vehicle_box": e.scene["vehicle_box"], "plate_box": e.scene["plate_box"]}
@@ -795,11 +824,92 @@ class VideoOut:
             self._cv.release()
 
 
+def _write_evidence_image(path: str, data: bytes) -> None:
+    """Publish an immutable image before a checkpoint can reference it."""
+    if os.path.exists(path):
+        return
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="wb", dir=os.path.dirname(path) or ".",
+                                         prefix="evidence_", suffix=".tmp", delete=False) as f:
+            temp_path = f.name
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if temp_path is not None and os.path.exists(temp_path):
+            os.unlink(temp_path)
+
+
+def _write_json_atomic(path: str, report: Dict) -> None:
+    """Publish a complete JSON snapshot without truncating the previous checkpoint."""
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=os.path.dirname(path) or ".",
+                                         prefix=os.path.basename(path) + ".", suffix=".tmp", delete=False) as f:
+            temp_path = f.name
+            json.dump(report, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if temp_path is not None and os.path.exists(temp_path):
+            os.unlink(temp_path)
+
+
+def _report_metadata(cfg: AlprConfig, fps: float, frames_processed: int) -> Dict:
+    """Shared video metadata; fps is the effective (frame-stepped) rate.
+
+    A zero-progress window stays exactly at the configured start, including
+    starts with more than two decimal places.
+    """
+    end = round(cfg.start_sec + frames_processed / fps, 2) if frames_processed else cfg.start_sec
+    return {"source": cfg.source, "profile": cfg.profile, "fps": fps,
+            "window_sec": [cfg.start_sec, end]}
+
+
+def _checkpoint_registry(checker: Optional[PlateChecker]) -> Dict:
+    """Preserve registry context without final-report counts, paths or simulated events."""
+    if checker is None:
+        return {}
+    return {"registry": {"rules": sorted(checker.rules),
+                         "disclaimer": checker.registry.get_meta("disclaimer") or ""}}
+
+
 def run(cfg: AlprConfig) -> int:
+    """Run with cleanup on success, cooperative stop and exceptions.
+
+    Exceptions propagate to the CLI (nonzero exit). Cleanup errors must not hide
+    an earlier processing/save error or prevent attempts to close other resources.
+    """
+    resources = {}
+    primary_error = None
+    try:
+        return _run(cfg, resources)
+    except BaseException as exc:
+        primary_error = exc
+        raise
+    finally:
+        errors = []
+        for name, close in reversed(list(resources.items())):
+            try:
+                close()
+            except BaseException as exc:
+                exc.add_note(f"While closing ALPR {name}")
+                errors.append(exc)
+        if errors:
+            if primary_error is not None:
+                errors.insert(0, primary_error)
+            raise BaseExceptionGroup("ALPR run/cleanup failed", errors)
+
+
+def _run(cfg: AlprConfig, resources: Dict) -> int:
     if not os.path.exists(cfg.source):
         print(f"Error: source not found: {cfg.source}")
         return 1
     cap = cv2.VideoCapture(cfg.source)
+    resources["video input"] = cap.release
     if not cap.isOpened():
         print(f"Error: could not open {cfg.source}")
         return 1
@@ -817,8 +927,17 @@ def run(cfg: AlprConfig) -> int:
     cap.set(cv2.CAP_PROP_POS_FRAMES, start)
 
     os.makedirs(os.path.dirname(cfg.out) or ".", exist_ok=True)
+    partial_path = os.path.splitext(cfg.out)[0] + ".partial.json"
+    # Resolve registry context before the first snapshot, without loading models.
+    checker = PlateChecker.from_config(cfg) if cfg.registry_enabled else None
+    if checker is not None:
+        resources["registry"] = checker.registry.close
+    _write_json_atomic(partial_path, {**_report_metadata(cfg, fps, 0), **_checkpoint_registry(checker),
+                                     "complete": False, "frames_processed": 0, "plates": []})
     out_size = tuple(cfg.dashboard_size) if cfg.hud_mode == "dashboard" else (width, height)
     writer = None if cfg.headless else VideoOut(cfg.out, fps, out_size)
+    if writer is not None:
+        resources["video output"] = writer.close
 
     print("=" * 64)
     print(f"SECS ALPR  profile={cfg.profile}  {width}x{height} @ {fps:.1f} FPS"
@@ -830,11 +949,40 @@ def run(cfg: AlprConfig) -> int:
           + (os.path.splitext(cfg.out)[0] + ".plates.json" if cfg.headless else cfg.out))
     print("=" * 64)
 
-    pipe = AlprPipeline(cfg, fps=fps)
+    pipe = AlprPipeline(cfg, fps=fps, checker=checker)
     gate = ViewGate.from_config(cfg.view_gate, width, height) if cfg.view_gate else None
     in_view, n_in_view = True, 0
     t_start, n, last_frame = time.time(), 0, None
+    summary_start = int(cfg.start_sec * fps)                   # same source offset as the final report
+    last_partial_save = time.monotonic()
+
+    def save_partial(force: bool = False) -> None:
+        nonlocal last_partial_save
+        now = time.monotonic()
+        if force or now - last_partial_save >= PARTIAL_SAVE_INTERVAL_SEC:
+            saved_frames = n
+            rows = pipe.summary(summary_start)
+            if cfg.evidence_dir:
+                pipe.write_evidence(rows, cfg.evidence_dir, summary_start)
+            _write_json_atomic(partial_path, {**_report_metadata(cfg, fps, saved_frames),
+                                             **_checkpoint_registry(pipe.checker),
+                                             "complete": False, "frames_processed": saved_frames,
+                                             "plates": rows})
+            last_partial_save = now
+
+    def stop_requested() -> bool:
+        return bool(cfg.stop_file and os.path.exists(cfg.stop_file))
+
+    def stop() -> int:
+        save_partial(force=True)
+        print(f"stopped: {n} frames; partial results -> {partial_path}")
+        return 0  # Cleanup still runs; Web owns the cancellation status.
+
+    if stop_requested():                                     # includes a request present before initialization
+        return stop()
     while n < total:
+        if stop_requested():
+            return stop()
         ok, frame = cap.read()
         if not ok:
             break
@@ -846,6 +994,9 @@ def run(cfg: AlprConfig) -> int:
         if gate is not None:                                   # rotating camera: another view is on screen
             if not gate(frame):
                 in_view = False
+                if stop_requested():
+                    return stop()
+                save_partial()
                 continue
             if not in_view:
                 pipe.reset_tracking()
@@ -855,21 +1006,22 @@ def run(cfg: AlprConfig) -> int:
         annotated, vehicles = pipe.process_frame(frame, n)
         if writer is not None:
             writer.write(annotated)
+        if stop_requested():
+            return stop()
+        save_partial()
         if n % 50 == 0:
             st = pipe._stats(n)
             last = next((e.result for e in reversed(pipe.log) if not e.simulated), None)
             print(f"[{n}/{total}] {n / fps:.1f}s | active {len(vehicles)} | counted {st['count']} | "
                   f"plates {st['plates']} | last {last.text + ' ' + last.status if last else '-'}")
-    cap.release()
+    if stop_requested():
+        return stop()
+    save_partial(force=True)                                  # partial snapshots always remain incomplete
+    if stop_requested():
+        return stop()
+    resources.pop("video input")()
     elapsed = max(1e-3, time.time() - t_start)                 # frames only (the end card is not timed)
     n_run = n_in_view if gate is not None else n               # frames that went through the models
-    if writer is not None and cfg.hud_mode == "dashboard" and cfg.summary_sec > 0:   # end card: every vehicle
-        card = render_summary(pipe.log, pipe._stats(n), cfg, frame=last_frame, lanes=pipe._lane_view(n, session=True))
-        for _ in range(int(cfg.summary_sec * fps)):
-            writer.write(card)
-    if writer is not None:
-        writer.close()
-
     start = int(cfg.start_sec * fps)                           # in processed frames
     rows = pipe.summary(start)
     if cfg.uncertain_dir:
@@ -879,8 +1031,7 @@ def run(cfg: AlprConfig) -> int:
         print(f"  FR03 uncertain diagnostics -> {diagnostic_path}")
     if cfg.evidence_dir:
         pipe.write_evidence(rows, cfg.evidence_dir, start)
-    report = {"source": cfg.source, "profile": cfg.profile, "fps": fps, "frames": n,
-              "window_sec": [cfg.start_sec, round(cfg.start_sec + n / fps, 2)], "plates": rows,
+    report = {**_report_metadata(cfg, fps, n), "frames": n, "plates": rows,
               "processing": {"model_backend": "openvino" if pipe._vehicle_args else "pt",
                              "openvino_device": cfg.openvino_device if pipe._vehicle_args else None,
                              "headless": cfg.headless, "read_plates": cfg.read_plates,
@@ -902,9 +1053,24 @@ def run(cfg: AlprConfig) -> int:
     lanes = pipe.lane_report()
     if lanes is not None:
         report["lanes"] = lanes
+    if stop_requested():                                     # finalization may itself take time
+        return stop()
+    end_card = writer is not None and cfg.hud_mode == "dashboard" and cfg.summary_sec > 0
+    if writer is not None and not end_card:
+        resources.pop("video output")()
+    if stop_requested():                                     # last check before publishing a success report
+        return stop()
     json_path = os.path.splitext(cfg.out)[0] + ".plates.json"
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
+    # Publication is the recognition completion boundary. Defer the end card
+    # until then so a detected stop can never append a success card. The caller
+    # must still wait for a clean process exit (video finalization can fail).
+    if end_card:
+        card = render_summary(pipe.log, pipe._stats(n), cfg, frame=last_frame, lanes=pipe._lane_view(n, session=True))
+        for _ in range(int(cfg.summary_sec * fps)):
+            writer.write(card)
+        resources.pop("video output")()
     print("=" * 64)
     print(f"done: {n} frames in {elapsed:.1f}s ({n_run / elapsed:.1f} FPS)"
           + (f"  view gate: {n_in_view} of {n} frames analysed, video read at {n / elapsed:.1f} FPS"
