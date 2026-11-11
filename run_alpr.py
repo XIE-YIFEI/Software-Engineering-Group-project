@@ -42,12 +42,14 @@ def main(argv=None) -> int:
                     help="write diagnostic-only results for unconfirmed OCR tracks to DIR")
     ap.add_argument("--ocr-reads-jsonl", metavar="PATH",
                     help="stream P03 OCR read events to a separate JSONL file (overwritten per run)")
+    ap.add_argument("--stop-file", metavar="PATH",
+                    help="stop after the current frame when PATH exists; save partial results only")
     args = ap.parse_args(argv)
 
     cfg = load_config(args.profile, args.config)
     for name in ("source", "start_sec", "duration", "out", "plate_model", "plate_model_fallback", "frame_step",
                  "model_backend", "openvino_device", "headless", "read_plates", "evidence_dir", "uncertain_dir",
-                 "ocr_reads_jsonl"):
+                 "ocr_reads_jsonl", "stop_file"):
         value = getattr(args, name)
         if value is not None:
             setattr(cfg, name, value)

@@ -143,7 +143,8 @@ class LogEntry:
 
 
 class AlprPipeline:
-    def __init__(self, cfg: AlprConfig, ocr=None, fps: float = 25.0):
+    def __init__(self, cfg: AlprConfig, ocr=None, fps: float = 25.0,
+                 checker: Optional[PlateChecker] = None):
         self.cfg = cfg
         self.fps = fps
         self.ocr_events = OcrEventWriter(cfg.ocr_reads_jsonl) if cfg.ocr_reads_jsonl else None
@@ -164,7 +165,8 @@ class AlprPipeline:
         self.states: Dict[int, TrackState] = {}
         self.log: List[LogEntry] = []
         self.fps_ema = 0.0
-        self.checker = PlateChecker.from_config(cfg) if cfg.registry_enabled else None
+        self.checker = ((checker if checker is not None else PlateChecker.from_config(cfg))
+                        if cfg.registry_enabled else None)
         self.clock0 = (datetime.fromisoformat(cfg.video_start_time).replace(tzinfo=None) if cfg.video_start_time
                        else datetime.now())
         self._sim_pending = sorted(cfg.registry_sim_events, key=lambda ev: float(ev["at_sec"])) if self.checker else []
@@ -867,11 +869,47 @@ def _report_metadata(cfg: AlprConfig, fps: float, frames_processed: int) -> Dict
             "window_sec": [cfg.start_sec, end]}
 
 
+def _checkpoint_registry(checker: Optional[PlateChecker]) -> Dict:
+    """Preserve registry context without final-report counts, paths or simulated events."""
+    if checker is None:
+        return {}
+    return {"registry": {"rules": sorted(checker.rules),
+                         "disclaimer": checker.registry.get_meta("disclaimer") or ""}}
+
+
 def run(cfg: AlprConfig) -> int:
+    """Run with cleanup on success, cooperative stop and exceptions.
+
+    Exceptions propagate to the CLI (nonzero exit). Cleanup errors must not hide
+    an earlier processing/save error or prevent attempts to close other resources.
+    """
+    resources = {}
+    primary_error = None
+    try:
+        return _run(cfg, resources)
+    except BaseException as exc:
+        primary_error = exc
+        raise
+    finally:
+        errors = []
+        for name, close in reversed(list(resources.items())):
+            try:
+                close()
+            except BaseException as exc:
+                exc.add_note(f"While closing ALPR {name}")
+                errors.append(exc)
+        if errors:
+            if primary_error is not None:
+                errors.insert(0, primary_error)
+            raise BaseExceptionGroup("ALPR run/cleanup failed", errors)
+
+
+def _run(cfg: AlprConfig, resources: Dict) -> int:
     if not os.path.exists(cfg.source):
         print(f"Error: source not found: {cfg.source}")
         return 1
     cap = cv2.VideoCapture(cfg.source)
+    resources["video input"] = cap.release
     if not cap.isOpened():
         print(f"Error: could not open {cfg.source}")
         return 1
@@ -890,10 +928,16 @@ def run(cfg: AlprConfig) -> int:
 
     os.makedirs(os.path.dirname(cfg.out) or ".", exist_ok=True)
     partial_path = os.path.splitext(cfg.out)[0] + ".partial.json"
-    _write_json_atomic(partial_path, {**_report_metadata(cfg, fps, 0),
+    # Resolve registry context before the first snapshot, without loading models.
+    checker = PlateChecker.from_config(cfg) if cfg.registry_enabled else None
+    if checker is not None:
+        resources["registry"] = checker.registry.close
+    _write_json_atomic(partial_path, {**_report_metadata(cfg, fps, 0), **_checkpoint_registry(checker),
                                      "complete": False, "frames_processed": 0, "plates": []})
     out_size = tuple(cfg.dashboard_size) if cfg.hud_mode == "dashboard" else (width, height)
     writer = None if cfg.headless else VideoOut(cfg.out, fps, out_size)
+    if writer is not None:
+        resources["video output"] = writer.close
 
     print("=" * 64)
     print(f"SECS ALPR  profile={cfg.profile}  {width}x{height} @ {fps:.1f} FPS"
@@ -905,7 +949,7 @@ def run(cfg: AlprConfig) -> int:
           + (os.path.splitext(cfg.out)[0] + ".plates.json" if cfg.headless else cfg.out))
     print("=" * 64)
 
-    pipe = AlprPipeline(cfg, fps=fps)
+    pipe = AlprPipeline(cfg, fps=fps, checker=checker)
     gate = ViewGate.from_config(cfg.view_gate, width, height) if cfg.view_gate else None
     in_view, n_in_view = True, 0
     t_start, n, last_frame = time.time(), 0, None
@@ -921,11 +965,24 @@ def run(cfg: AlprConfig) -> int:
             if cfg.evidence_dir:
                 pipe.write_evidence(rows, cfg.evidence_dir, summary_start)
             _write_json_atomic(partial_path, {**_report_metadata(cfg, fps, saved_frames),
+                                             **_checkpoint_registry(pipe.checker),
                                              "complete": False, "frames_processed": saved_frames,
                                              "plates": rows})
             last_partial_save = now
 
+    def stop_requested() -> bool:
+        return bool(cfg.stop_file and os.path.exists(cfg.stop_file))
+
+    def stop() -> int:
+        save_partial(force=True)
+        print(f"stopped: {n} frames; partial results -> {partial_path}")
+        return 0  # Cleanup still runs; Web owns the cancellation status.
+
+    if stop_requested():                                     # includes a request present before initialization
+        return stop()
     while n < total:
+        if stop_requested():
+            return stop()
         ok, frame = cap.read()
         if not ok:
             break
@@ -937,6 +994,8 @@ def run(cfg: AlprConfig) -> int:
         if gate is not None:                                   # rotating camera: another view is on screen
             if not gate(frame):
                 in_view = False
+                if stop_requested():
+                    return stop()
                 save_partial()
                 continue
             if not in_view:
@@ -947,23 +1006,22 @@ def run(cfg: AlprConfig) -> int:
         annotated, vehicles = pipe.process_frame(frame, n)
         if writer is not None:
             writer.write(annotated)
+        if stop_requested():
+            return stop()
         save_partial()
         if n % 50 == 0:
             st = pipe._stats(n)
             last = next((e.result for e in reversed(pipe.log) if not e.simulated), None)
             print(f"[{n}/{total}] {n / fps:.1f}s | active {len(vehicles)} | counted {st['count']} | "
                   f"plates {st['plates']} | last {last.text + ' ' + last.status if last else '-'}")
+    if stop_requested():
+        return stop()
     save_partial(force=True)                                  # partial snapshots always remain incomplete
-    cap.release()
+    if stop_requested():
+        return stop()
+    resources.pop("video input")()
     elapsed = max(1e-3, time.time() - t_start)                 # frames only (the end card is not timed)
     n_run = n_in_view if gate is not None else n               # frames that went through the models
-    if writer is not None and cfg.hud_mode == "dashboard" and cfg.summary_sec > 0:   # end card: every vehicle
-        card = render_summary(pipe.log, pipe._stats(n), cfg, frame=last_frame, lanes=pipe._lane_view(n, session=True))
-        for _ in range(int(cfg.summary_sec * fps)):
-            writer.write(card)
-    if writer is not None:
-        writer.close()
-
     start = int(cfg.start_sec * fps)                           # in processed frames
     rows = pipe.summary(start)
     if cfg.uncertain_dir:
@@ -995,9 +1053,24 @@ def run(cfg: AlprConfig) -> int:
     lanes = pipe.lane_report()
     if lanes is not None:
         report["lanes"] = lanes
+    if stop_requested():                                     # finalization may itself take time
+        return stop()
+    end_card = writer is not None and cfg.hud_mode == "dashboard" and cfg.summary_sec > 0
+    if writer is not None and not end_card:
+        resources.pop("video output")()
+    if stop_requested():                                     # last check before publishing a success report
+        return stop()
     json_path = os.path.splitext(cfg.out)[0] + ".plates.json"
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
+    # Publication is the recognition completion boundary. Defer the end card
+    # until then so a detected stop can never append a success card. The caller
+    # must still wait for a clean process exit (video finalization can fail).
+    if end_card:
+        card = render_summary(pipe.log, pipe._stats(n), cfg, frame=last_frame, lanes=pipe._lane_view(n, session=True))
+        for _ in range(int(cfg.summary_sec * fps)):
+            writer.write(card)
+        resources.pop("video output")()
     print("=" * 64)
     print(f"done: {n} frames in {elapsed:.1f}s ({n_run / elapsed:.1f} FPS)"
           + (f"  view gate: {n_in_view} of {n} frames analysed, video read at {n / elapsed:.1f} FPS"

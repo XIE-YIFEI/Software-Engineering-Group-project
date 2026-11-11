@@ -33,6 +33,7 @@ class AlprConfig:
                                        # it came from are saved there, their paths go into the JSON (`evidence`)
     uncertain_dir: str = ""            # optional local FR03 diagnostic output for unconfirmed tracks
     ocr_reads_jsonl: str = ""          # optional P03 per-read JSONL path; streamed during processing
+    stop_file: str = ""                # optional cooperative stop request; existence only, never modified
 
     vehicle_model: str = "yolov8s.pt"
     plate_model: str = "models/plate_malaysia.pt"
