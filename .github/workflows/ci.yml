@@ -40,6 +40,8 @@ jobs:
         run: python -m unittest discover -s alpr/tests -p test_ocr_events.py -v
       - name: P03 checkpoint and cooperative stop tests
         run: python -m unittest discover -s alpr/tests -p test_checkpoints.py -v
+      - name: P03 alert contract tests
+        run: python -m unittest discover -s alpr/tests -p test_alert_contract.py -v
 
 
       - name: Web system tests (FastAPI TestClient)
