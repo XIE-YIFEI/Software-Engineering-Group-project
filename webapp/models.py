@@ -445,6 +445,7 @@ class AccessEventOut(BaseModel):
 
 
 class InsideOut(BaseModel):
+    id: int = 0
     plate: str
     identity: str
     unit_no: str = ""

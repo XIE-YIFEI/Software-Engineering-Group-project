@@ -85,7 +85,7 @@ def api_conversations(user: User = Depends(current_user), conn: sqlite3.Connecti
 def api_conversation(conv_id: int, user: User = Depends(current_user), conn: sqlite3.Connection = Depends(get_conn)):
     h = store.history(conn, user, conv_id)
     ids = [i for item in h["items"] for i in item.get("cards", [])]
-    h["cards"] = {r["id"]: actions.card(r) for r in db.rows(
+    h["cards"] = {r["id"]: store.sanitize_value(conn, user, actions.card(r)) for r in db.rows(
         conn, f"SELECT * FROM copilot_actions WHERE id IN ({','.join('?' * len(ids)) or 'NULL'})", ids)}
     return h
 

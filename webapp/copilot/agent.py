@@ -42,12 +42,12 @@ def make_llm(cfg: config.CopilotConfig):
     return AnthropicLLM(cfg.model, cfg.effort)
 
 
-def _earlier_citations(conn: sqlite3.Connection, conv_id: int) -> Dict[str, Dict[str, Any]]:
+def _earlier_citations(conn: sqlite3.Connection, conv_id: int, user: Optional[User] = None) -> Dict[str, Dict[str, Any]]:
     out: Dict[str, Dict[str, Any]] = {}
     for r in db.rows(conn, "SELECT display FROM copilot_messages WHERE conversation_id = ? AND role = 'assistant' AND "
                            "display IS NOT NULL ORDER BY seq", (conv_id,)):
         out.update(json.loads(r["display"]).get("citations") or {})
-    return out
+    return store.sanitize_citations(conn, user, out) if user else out
 
 
 def ask(conn: sqlite3.Connection, user: User, question: str, conversation_id: Optional[int] = None,
@@ -88,7 +88,7 @@ def ask(conn: sqlite3.Connection, user: User, question: str, conversation_id: Op
 
     user_msg = {"role": "user", "content": [{"type": "text", "text": question}]}
     ctx_msg = prompts.context_message(conn, user, page)
-    history = store.transcript(conn, conv_id)
+    history = store.transcript(conn, conv_id, user)
     messages = history + [user_msg, ctx_msg]
     new: List[Dict[str, Any]] = [user_msg, ctx_msg]
     via = replace(user, via="assistant")
@@ -165,14 +165,16 @@ def ask(conn: sqlite3.Connection, user: User, question: str, conversation_id: Op
         problem = f"The AI service could not answer: {e}."
     answer = "".join(parts).strip()
     cited = list(dict.fromkeys(REF.findall(answer)))
-    known = {**_earlier_citations(conn, conv_id), **ctx.citations}
+    known = {**_earlier_citations(conn, conv_id, user), **ctx.citations}
     check = numbers.check(answer, payloads + [ctx_msg["content"], KNOWN], question) if answer else \
         {"ok": True, "checked": 0, "unmatched": [], "plates_unmatched": []}
     check["unknown_refs"] = [r for r in cited if r not in known]
     check["ok"] = check["ok"] and not check["unknown_refs"]
-    display = {"text": answer, "steps": steps, "citations": {r: known[r] for r in cited if r in known},
+    tool_cites = {r: ctx.citations[r] for r in list(ctx.citations)[:60]}
+    display = {"text": answer, "steps": steps,
+               "citations": {**tool_cites, **{r: known[r] for r in cited if r in known}},
                "records": [r for r in ctx.citations if r not in cited][:60],
-               "record_data": {r: ctx.citations[r] for r in list(ctx.citations)[:60]},
+               "record_data": tool_cites,
                "cards": [c["id"] for c in ctx.cards], "panels": ctx.panels, "check": check,
                "model": turn.model if turn else llm.model, "fallback": turn.fallback if turn else None,
                "usage": usage_total, "cost_usd": round(cost, 6), "ai": True, "problem": problem, "at": clock.now_iso()}

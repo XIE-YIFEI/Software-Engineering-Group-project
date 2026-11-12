@@ -258,6 +258,17 @@ def _access(ctx: Ctx, e) -> Dict[str, Any]:
             "identity": e.identity, "unit": e.unit_no, "guard": e.guard, "note": e.note, "simulated": e.simulated}
 
 
+def _inside(ctx: Ctx, r) -> Dict[str, Any]:
+    ref = f"G:{r.id}"
+    ctx.citations[ref] = {"ref": ref, "kind": "access", "id": r.id, "plate": r.plate, "masked": False,
+                          "time": r.entered_at, "label": f"allowed · {r.identity.replace('_', ' ')}",
+                          "simulated": r.simulated, "link": "/gate/log"}
+    return {"ref": ref, "plate": r.plate, "identity": r.identity, "unit": r.unit_no, "entered_at": r.entered_at,
+            "minutes_inside": r.minutes_inside, "hours_inside": round(r.minutes_inside / 60.0, 1),
+            "pass_valid_to": r.pass_valid_to, "pass_expired": r.pass_expired, "overstay": r.overstay,
+            "simulated": r.simulated, "note": r.note}
+
+
 def _pass(ctx: Ctx, p) -> Dict[str, Any]:
     ref = f"P:{p.id}"
     ctx.citations[ref] = {"ref": ref, "kind": "pass", "id": p.id, "plate": p.plate, "masked": False,
@@ -455,10 +466,7 @@ def gate_inside(ctx: Ctx, a: EmptyIn) -> Dict[str, Any]:
     rows = gate_svc.inside(ctx.conn, ctx.user)
     hours = float(db.get_setting(ctx.conn, "overstay_hours"))
     return {"count": len(rows), "overstays": sum(r.overstay for r in rows), "overstay_limit_hours": hours,
-            "visitors": [{"plate": r.plate, "identity": r.identity, "unit": r.unit_no, "entered_at": r.entered_at,
-                          "minutes_inside": r.minutes_inside, "hours_inside": round(r.minutes_inside / 60.0, 1),
-                          "pass_valid_to": r.pass_valid_to, "pass_expired": r.pass_expired, "overstay": r.overstay,
-                          "simulated": r.simulated, "note": r.note} for r in rows]}
+            "visitors": [_inside(ctx, r) for r in rows]}
 
 
 class AccessIn(In):

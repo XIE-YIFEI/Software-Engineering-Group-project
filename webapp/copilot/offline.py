@@ -108,7 +108,7 @@ def inside(r: Run) -> str:
                  f"{p['overstay_limit_hours']:g} 小时或通行证已过期）：")]
     for v in p["visitors"]:
         flag = r.t(" · OVERSTAY", " · 超时") if v["overstay"] else ""
-        lines.append(f"- {v['plate']} · {r.t('unit', '单位')} {v['unit'] or '-'} · {v['hours_inside']:g} h{flag}{_sim(v, r)}")
+        lines.append(f"- [[{v['ref']}]] {v['plate']} · {r.t('unit', '单位')} {v['unit'] or '-'} · {v['hours_inside']:g} h{flag}{_sim(v, r)}")
     return "\n".join(lines)
 
 

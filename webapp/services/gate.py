@@ -154,8 +154,8 @@ def inside(conn: sqlite3.Connection, user: User) -> List[InsideOut]:
     for e in rows:
         mins = int((now - clock.parse(e["at"])).total_seconds() // 60)
         expired = bool(e["pass_to"] and e["pass_to"] < clock.iso(now))
-        out.append(InsideOut(plate=e["plate_text"], identity=e["identity"], unit_no=e["unit_no"], entered_at=e["at"],
-                             minutes_inside=mins, pass_valid_to=e["pass_to"], pass_expired=expired,
+        out.append(InsideOut(id=e["id"], plate=e["plate_text"], identity=e["identity"], unit_no=e["unit_no"],
+                             entered_at=e["at"], minutes_inside=mins, pass_valid_to=e["pass_to"], pass_expired=expired,
                              overstay=mins >= hours * 60 or expired, simulated=bool(e["simulated"]), note=e["note"]))
     out.sort(key=lambda x: (not x.overstay, -x.minutes_inside))
     return out

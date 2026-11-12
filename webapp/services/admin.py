@@ -68,6 +68,10 @@ def update_user(conn: sqlite3.Connection, user: User, user_id: int, active_flag:
                      [*changes.values(), user_id])
         if "active" in changes or "password_hash" in changes or "role" in changes:
             conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))     # sign them out everywhere
+        if "active" in changes or "role" in changes:
+            conn.execute("DELETE FROM reveals WHERE user_id = ?", (user_id,))      # clear temporary plate reveals
+            conn.execute("UPDATE copilot_actions SET status = 'cancelled' WHERE user_id = ? AND status = 'pending'",
+                         (user_id,))
         audit(conn, user, "user_update", "user", user_id, {k: ("***" if k == "password_hash" else v)
                                                             for k, v in changes.items() if k != "locked_until"})
     return _user_out(db.row(conn, "SELECT * FROM users WHERE id = ?", (user_id,)))

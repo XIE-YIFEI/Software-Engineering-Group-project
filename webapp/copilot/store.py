@@ -7,12 +7,182 @@ end cleanly (an error, a refusal, a truncated tool call) is not stored, so the t
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
 from .. import clock, db
+from ..privacy import can_see_full, mask_plate
 from ..security import Forbidden, User
+from ..services.common import can_play, visible_camera_ids
+from . import numbers
+
+_NON_PLATE_PREFIX = {
+    "ISO", "USD", "MYR", "RM", "MAE", "RMSE", "MAPE", "ACT", "SOP", "PDF", "CSV", "ZIP",
+    "API", "LLM", "VLM", "OCR", "FPS", "KMH", "SEC", "MIN", "MAX", "AVG", "SHA", "UTC",
+    "MYT", "SIM", "REF", "RUN", "CAM", "TC",
+}
+
+
+def _current_user(conn: sqlite3.Connection, user: Optional[User], conv_id: Optional[int] = None) -> Optional[User]:
+    uid = user.id if user is not None else (
+        db.scalar(conn, "SELECT user_id FROM copilot_conversations WHERE id = ?", (conv_id,)) if conv_id else None)
+    if uid is None:
+        return user
+    r = db.row(conn, "SELECT id, username, display_name, role, site_id FROM users WHERE id = ?", (uid,))
+    if r is None:
+        return user
+    return User(id=r["id"], username=r["username"], display_name=r["display_name"], role=r["role"],
+                site_id=r["site_id"], via=user.via if user else None)
+
+
+def _allowed_compacts(conn: sqlite3.Connection, user: User) -> set[str]:
+    if not user.masked:
+        return set()
+    now = clock.now_iso()
+    out = {r["compact"] for r in db.rows(
+        conn, "SELECT compact FROM reveals WHERE user_id = ? AND compact IS NOT NULL AND sighting_id IS NULL AND expires_at > ?",
+        (user.id, now)) if r["compact"]}
+    cids = set(visible_camera_ids(conn, user))
+    for r in db.rows(conn, "SELECT s.compact, s.camera_id FROM reveals r JOIN sightings s ON s.id = r.sighting_id "
+                           "WHERE r.user_id = ? AND r.sighting_id IS NOT NULL AND r.expires_at > ?", (user.id, now)):
+        if r["compact"] and r["camera_id"] in cids:
+            out.add(r["compact"])
+    return out
+
+
+def _mask_text(text: str, allowed: set[str]) -> str:
+    if not text:
+        return text
+
+    def repl(m: re.Match[str]) -> str:
+        prefix, digits, suffix = m.group(1), m.group(2), m.group(3) or ""
+        if prefix in _NON_PLATE_PREFIX or (len(digits) == 1 and not suffix):
+            return m.group(0)
+        compact = f"{prefix}{digits}{suffix}"
+        return m.group(0) if compact in allowed else mask_plate(compact)
+
+    return numbers.PLATE.sub(repl, text)
+
+
+def _mask_value(val: Any, allowed: set[str], role: str = "traffic") -> Any:
+    if isinstance(val, str):
+        s = val.strip()
+        if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
+            try:
+                parsed = json.loads(val)
+            except Exception:                                           # noqa: BLE001
+                return _mask_text(val, allowed)
+            return json.dumps(_mask_value(parsed, allowed, role), ensure_ascii=False, separators=(",", ":"))
+        return _mask_text(val, allowed)
+    if isinstance(val, list):
+        return [_mask_value(x, allowed, role) for x in val]
+    if isinstance(val, dict):
+        if val.get("type") == "thinking":
+            return {**val, "thinking": _mask_text(val.get("thinking") or "", allowed)} if val.get("thinking") else dict(val)
+        out = {k: (v if k in ("signature", "prompt_hash") else _mask_value(v, allowed, role))
+               for k, v in val.items() if role == "police" or k not in ("registry", "registry_vs_observed")}
+        if "plate" in out and isinstance(out["plate"], str) and out["plate"].endswith("****"):
+            if "masked" in out:
+                out["masked"] = True
+            if isinstance(out.get("crop_url"), str):
+                out["crop_url"] = out["crop_url"].split("?")[0]
+        if "plates_masked" in out:
+            out["plates_masked"] = True
+        return out
+    return val
+
+
+def sanitize_citation(conn: sqlite3.Connection, user: User, cit: Dict[str, Any]) -> Dict[str, Any]:
+    user = _current_user(conn, user) or user
+    d = dict(cit)
+    kind = d.get("kind")
+    cid = d.get("id")
+    cids = set(visible_camera_ids(conn, user))
+    if kind == "sighting" and cid is not None:
+        s = db.row(conn, "SELECT s.id, s.plate_text, s.compact, s.camera_id, s.crop_path, c.kind AS camera_kind "
+                         "FROM sightings s JOIN cameras c ON c.id = s.camera_id WHERE s.id = ?", (cid,))
+        full = bool(s and s["camera_id"] in cids and can_see_full(conn, user, s["id"], s["compact"]))
+        plate_src = s["plate_text"] if s else d.get("plate")
+        d["plate"] = plate_src if full else mask_plate(plate_src)
+        d["masked"] = not full
+        if d.get("crop_url"):
+            base = str(d["crop_url"]).split("?")[0]
+            d["crop_url"] = f"{base}?v=full" if full else base
+        if not s or s["camera_id"] not in cids or not can_play(user, s["camera_kind"]):
+            d["video"] = None
+        return d
+    if kind == "alert" and cid is not None:
+        a = db.row(conn, "SELECT a.id, a.plate_text, a.compact, a.sighting_id, a.camera_id, c.kind AS camera_kind "
+                         "FROM alerts a LEFT JOIN cameras c ON c.id = a.camera_id WHERE a.id = ?", (cid,))
+        vis = bool(a and (a["camera_id"] is None or a["camera_id"] in cids))
+        full = bool(vis and a and can_see_full(conn, user, a["sighting_id"], a["compact"]))
+        plate_src = a["plate_text"] if a else d.get("plate")
+        d["plate"] = plate_src if full else mask_plate(plate_src)
+        d["masked"] = not full
+        if d.get("crop_url"):
+            base = str(d["crop_url"]).split("?")[0]
+            d["crop_url"] = f"{base}?v=full" if full else base
+        if not vis or (a and not can_play(user, a["camera_kind"])):
+            d["video"] = None
+        if user.role not in ("police", "guard", "admin"):
+            d["link"] = None
+        return d
+    if kind == "event" and cid is not None:
+        e = db.row(conn, "SELECT e.id, e.plate_text, e.compact, e.camera_id FROM lane_events e WHERE e.id = ?", (cid,))
+        vis = bool(e and e["camera_id"] in cids)
+        full = bool(vis and e and can_see_full(conn, user, None, e["compact"]))
+        plate_src = e["plate_text"] if e else d.get("plate")
+        d["plate"] = (plate_src if full else mask_plate(plate_src)) if plate_src else None
+        d["masked"] = not full
+        if user.role not in ("police", "guard", "admin"):
+            d["link"] = None
+        return d
+    if kind in ("access", "pass"):
+        if user.role != "guard" or user.masked:
+            if d.get("plate"):
+                d["plate"] = mask_plate(d["plate"])
+            d["masked"] = True
+            d["link"] = None
+        return d
+    if user.masked and d.get("plate"):
+        allowed = _allowed_compacts(conn, user)
+        compact = re.sub(r"[^A-Z0-9]", "", str(d["plate"]).upper())
+        if compact not in allowed:
+            d["plate"] = mask_plate(d["plate"])
+            d["masked"] = True
+            if d.get("crop_url"):
+                d["crop_url"] = str(d["crop_url"]).split("?")[0]
+    return d
+
+
+def sanitize_citations(conn: sqlite3.Connection, user: User,
+                       cites: Optional[Dict[str, Dict[str, Any]]]) -> Dict[str, Dict[str, Any]]:
+    user = _current_user(conn, user) or user
+    return {k: sanitize_citation(conn, user, v) for k, v in (cites or {}).items()}
+
+
+def sanitize_value(conn: sqlite3.Connection, user: User, val: Any) -> Any:
+    user = _current_user(conn, user) or user
+    if not user.masked:
+        return val
+    return _mask_value(val, _allowed_compacts(conn, user), user.role)
+
+
+def sanitize_display(conn: sqlite3.Connection, user: User, d: Dict[str, Any]) -> Dict[str, Any]:
+    user = _current_user(conn, user) or user
+    out = dict(d)
+    if "citations" in out:
+        out["citations"] = sanitize_citations(conn, user, out.get("citations"))
+    if "record_data" in out:
+        out["record_data"] = sanitize_citations(conn, user, out.get("record_data"))
+    if user.masked:
+        allowed = _allowed_compacts(conn, user)
+        for k in ("text", "steps", "panels", "check", "page"):
+            if k in out:
+                out[k] = _mask_value(out[k], allowed, user.role)
+    return out
 
 
 def create_conversation(conn: sqlite3.Connection, user: User, title: str, model: str, prompt_hash: str) -> int:
@@ -22,16 +192,24 @@ def create_conversation(conn: sqlite3.Connection, user: User, title: str, model:
 
 
 def conversation(conn: sqlite3.Connection, user: User, conv_id: int) -> Dict[str, Any]:
+    user = _current_user(conn, user) or user
     c = db.row(conn, "SELECT * FROM copilot_conversations WHERE id = ?", (conv_id,))
     if c is None or c["user_id"] != user.id:                # only the owner reads a conversation
         raise LookupError("no such conversation")
+    if user.masked and c.get("title"):
+        c = {**c, "title": _mask_text(c["title"], _allowed_compacts(conn, user))}
     return c
 
 
-def transcript(conn: sqlite3.Connection, conv_id: int) -> List[Dict[str, Any]]:
-    return [{"role": r["role"], "content": json.loads(r["content"])}
+def transcript(conn: sqlite3.Connection, conv_id: int, user: Optional[User] = None) -> List[Dict[str, Any]]:
+    u = _current_user(conn, user, conv_id)
+    rows = [{"role": r["role"], "content": json.loads(r["content"])}
             for r in db.rows(conn, "SELECT role, content FROM copilot_messages WHERE conversation_id = ? ORDER BY seq",
                              (conv_id,))]
+    if u is not None and u.masked:
+        allowed = _allowed_compacts(conn, u)
+        return [{"role": m["role"], "content": _mask_value(m["content"], allowed, u.role)} for m in rows]
+    return rows
 
 
 def questions_in(conn: sqlite3.Connection, conv_id: int) -> int:
@@ -56,16 +234,22 @@ def append(conn: sqlite3.Connection, conv_id: int, messages: List[Dict[str, Any]
 
 
 def conversations(conn: sqlite3.Connection, user: User, limit: int = 30) -> List[Dict[str, Any]]:
-    return db.rows(conn, "SELECT c.id, c.title, c.model, c.created_at, c.updated_at, (SELECT COUNT(*) FROM "
+    user = _current_user(conn, user) or user
+    rows = db.rows(conn, "SELECT c.id, c.title, c.model, c.created_at, c.updated_at, (SELECT COUNT(*) FROM "
                          "copilot_messages m WHERE m.conversation_id = c.id AND m.role = 'user' AND m.display IS NOT NULL) "
                          "AS questions FROM copilot_conversations c WHERE c.user_id = ? ORDER BY c.updated_at DESC LIMIT ?",
                    (user.id, limit))
+    if user.masked:
+        allowed = _allowed_compacts(conn, user)
+        return [{**r, "title": _mask_text(r["title"], allowed)} for r in rows]
+    return rows
 
 
 def history(conn: sqlite3.Connection, user: User, conv_id: int) -> Dict[str, Any]:
     """A conversation as the panel shows it: questions and answers (display data), oldest first."""
+    user = _current_user(conn, user) or user
     c = conversation(conn, user, conv_id)
-    items = [{"role": r["role"], **json.loads(r["display"])} for r in db.rows(
+    items = [{"role": r["role"], **sanitize_display(conn, user, json.loads(r["display"]))} for r in db.rows(
         conn, "SELECT role, display FROM copilot_messages WHERE conversation_id = ? AND display IS NOT NULL ORDER BY seq",
         (conv_id,))]
     return {"id": c["id"], "title": c["title"], "model": c["model"], "created_at": c["created_at"], "items": items}
