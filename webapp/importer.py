@@ -282,6 +282,9 @@ def _import_lanes(conn, code: str, run_id: int, camera_id: int, lanes: dict, ori
 def attach_evidence(conn: sqlite3.Connection, settings: Settings, run_id: int, code: str, evidence_json: Path) -> int:
     """Copy the crops and scene frames of a --evidence run into the media folder and link them to the rows of
     the same run (matched by first frame and plate: the evidence run gives identical results)."""
+    import cv2
+    import numpy as np
+
     with open(evidence_json, encoding="utf-8") as f:
         d = json.load(f)
     n = 0
@@ -294,23 +297,40 @@ def attach_evidence(conn: sqlite3.Connection, settings: Settings, run_id: int, c
         if sid is None:
             continue
         paths = {}
+        unavailable = None
         for kind in ("crop", "scene"):
             src = (ROOT / ev[kind]) if not Path(ev[kind]).is_absolute() else Path(ev[kind])
-            if not src.exists():
-                break
             dst_rel = f"runs/{code}/{src.name}"
-            (settings.media_dir / dst_rel).parent.mkdir(parents=True, exist_ok=True)
+            dst = settings.media_dir / dst_rel
             try:
-                shutil.copy2(src, settings.media_dir / dst_rel)
-            except OSError:
-                break  # Keep the sighting; its evidence remains unavailable.
+                if not src.exists():
+                    unavailable = f"{kind} image is missing"
+                    break
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
+                data = dst.read_bytes()
+            except OSError as exc:
+                unavailable = f"{kind} evidence storage unavailable ({type(exc).__name__})"
+                break
+            try:
+                image = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR) if data else None
+            except cv2.error:
+                image = None
+            if image is None:
+                unavailable = f"{kind} image could not be decoded"
+                break
             paths[kind] = dst_rel
+        info = {k: ev.get(k) for k in ("frame", "time_sec", "vehicle_box", "plate_box")}
+        info["source"] = rel(evidence_json)
         if len(paths) == 2:
-            info = {k: ev.get(k) for k in ("frame", "time_sec", "vehicle_box", "plate_box")}
-            info["source"] = rel(evidence_json)
             conn.execute("UPDATE sightings SET crop_path = ?, scene_path = ?, scene_info = ? WHERE id = ?",
                          (paths["crop"], paths["scene"], db.js(info), sid))
             n += 1
+        else:
+            # Only evidence IO/decoding is optional. SQL and malformed imports must still fail.
+            info["unavailable_reason"] = unavailable
+            conn.execute("UPDATE sightings SET crop_path = NULL, scene_path = NULL, scene_info = ? WHERE id = ?",
+                         (db.js(info), sid))
     return n
 
 

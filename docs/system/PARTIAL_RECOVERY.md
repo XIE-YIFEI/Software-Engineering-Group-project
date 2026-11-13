@@ -14,6 +14,20 @@ recognition process is silent. The configurable defaults are:
 - `SECS_CANCEL_TIMEOUT_SEC=30`: allow recognition to finish its frame/save.
 - `SECS_TERMINATE_TIMEOUT_SEC=5`: wait after terminate, then kill if necessary.
 
+For recognition, cancellation creates `stop.request` and waits up to the
+graceful cancellation timeout (30 seconds by default) for frame completion,
+checkpoint saving and exit. If recognition is still running, Web calls
+terminate, waits up to the termination timeout (5 seconds by default), then
+kills and waits for that child if necessary.
+
+Playback conversion uses the same child-process monitor and a separate
+`playback.log`. FFmpeg cannot honor recognition's stop file, so cancellation
+or server shutdown terminates that execution's transcoder immediately, then
+uses the configured termination timeout before kill and wait. Conversion also
+retains its 3600-second overall limit. A forced zero exit is not a completed
+copy; failed conversion falls back to the source. Accepted cancellation still
+recovers the partial result and remains cancelled after the child is reaped.
+
 Web waits for exit. An accepted cancel always ends as `cancelled`, including
 recognition exit code 0. A nonzero exit or missing/invalid final output ends as
 `failed`. Both paths attempt one import of the last valid `result.partial.json`.
@@ -35,6 +49,14 @@ the selected JSON; missing/unavailable image pairs retain the sighting and are
 reported in the job message. Partial video playback uses the original source,
 subject to existing media permissions, not the potentially incomplete MP4.
 Browser compatibility of the source codec is not guaranteed.
+
+Evidence directory creation, copying and read failures degrade to unavailable
+evidence without discarding valid sightings. Copied crop/scene images must
+both decode before either is attached. An unavailable pair clears attachment
+paths and records an `unavailable_reason` in the sighting's `scene_info`; job
+messages include the affected count and reasons on both final and partial
+imports. Retrying the snapshot can restore a healthy pair. Database errors
+and malformed imports still propagate to the existing transaction rollback.
 
 Missing, malformed and zero-progress checkpoints never create a successful
 empty run. Positive-progress checkpoints with no plates are valid; they say
@@ -68,3 +90,10 @@ recognition loop writing checkpoints, Web cancellation and recovery, evidence
 attachment and role access checks; inference is replaced with deterministic
 outputs. JavaScript syntax and Git whitespace checks passed. Browser layout
 and actual model/source-video playback have not been manually validated.
+
+Follow-up recovery fixes passed local model-free validation: partial recovery
+31/31 (including 11 added regression tests), Web regression 22/22, recognition
+checkpoints 22/22 and OCR events 13/13. Transcoder cancellation uses a controlled
+Python child; kill escalation also uses a controlled process fixture. These
+results do not establish real FFmpeg transcoding, real-model integration or
+browser acceptance. Those checks remain pending joint testing.

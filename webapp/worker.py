@@ -107,10 +107,12 @@ class Worker:
     def _cancelled(self, conn, job_id: int) -> bool:
         return bool(db.scalar(conn, "SELECT cancel_requested FROM jobs WHERE id = ?", (job_id,)))
 
-    def _run(self, conn, job: dict, cmd, log_path: Path, total_hint: Optional[int] = None) -> int:
+    def _run(self, conn, job: dict, cmd, log_path: Path, total_hint: Optional[int] = None,
+             *, cooperative_stop: bool = True, timeout_sec: Optional[float] = None) -> int:
         env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
         total = total_hint
         requested_at = terminated_at = None
+        started_at = time.monotonic()
         lines = queue.Queue()
         with open(log_path, "w", encoding="utf-8") as log:
             log.write(" ".join(map(str, cmd)) + "\n")
@@ -129,15 +131,18 @@ class Worker:
             try:
                 while proc.poll() is None or not eof:
                     now = time.monotonic()
-                    if proc.poll() is None and (self._cancelled(conn, job["id"]) or self._stop.is_set()):
+                    timed_out = timeout_sec is not None and now - started_at >= timeout_sec
+                    if proc.poll() is None and (self._cancelled(conn, job["id"]) or self._stop.is_set()
+                                                or timed_out):
                         if requested_at is None:
                             requested_at = now
-                            (log_path.parent / "stop.request").touch(exist_ok=True)
-                        if terminated_at is None and (job["kind"] == "image" or
+                            if cooperative_stop:
+                                (log_path.parent / "stop.request").touch(exist_ok=True)
+                        if terminated_at is None and (not cooperative_stop or timed_out or job["kind"] == "image" or
                                 now - requested_at >= self.settings.cancel_timeout_sec):
                             proc.terminate()
                             terminated_at = now
-                            log.write("Timeout: terminating recognition process\n")
+                            log.write("Stopping child process: cancellation, shutdown or timeout\n")
                         elif terminated_at is not None and now - terminated_at >= self.settings.terminate_timeout_sec:
                             proc.kill()
                     try:
@@ -155,13 +160,17 @@ class Worker:
                         conn.execute("UPDATE jobs SET expected_frames = ? WHERE id = ?", (total, job["id"]))
                         conn.execute("UPDATE jobs SET progress = ?, message = ? WHERE id = ? AND cancel_requested = 0",
                                      (min(0.99, n / max(1, total)), f"{n}/{total} frames", job["id"]))
-                return proc.wait()
+                rc = proc.wait()
+                # A terminated transcoder may handle the signal and return zero;
+                # that does not make its interrupted output a completed copy.
+                return 1 if not cooperative_stop and terminated_at is not None and rc == 0 else rc
             finally:
                 if proc.poll() is None:
                     proc.kill()
                     proc.wait()
                 reader.join(timeout=2)
                 proc.stdout.close()
+                self._proc = None
 
     def _recover(self, conn, job: dict, job_dir: Path, reason: str) -> None:
         with db.transaction(conn):
@@ -197,10 +206,7 @@ class Worker:
                     message = f"Incomplete results: {frames} saved frames, {count} plate records"
                     if count == 0:
                         message += " — no plate records saved in the processed portion"
-                    missing = db.scalar(conn, "SELECT COUNT(*) FROM sightings WHERE run_id = ? AND "
-                                        "(crop_path IS NULL OR scene_path IS NULL)", (run_id,))
-                    if missing:
-                        message += f"; evidence unavailable for {missing} records"
+                    message += self._evidence_note(conn, run_id)
         except Exception as exc:
             conn.execute("ROLLBACK TO recovery_import")
             run_id, frames, window = None, None, None
@@ -224,6 +230,17 @@ class Worker:
     def _done(self, conn, job_id: int, run_id: int, msg: str) -> None:
         conn.execute("UPDATE jobs SET status = 'done', progress = 1, message = ?, run_id = ?, finished_at = ? WHERE id = ?",
                      (msg, run_id, clock.now_iso(), job_id))
+
+    @staticmethod
+    def _evidence_note(conn, run_id: int) -> str:
+        missing = db.rows(conn, "SELECT scene_info FROM sightings WHERE run_id = ? AND "
+                          "(crop_path IS NULL OR scene_path IS NULL)", (run_id,))
+        if not missing:
+            return ""
+        reasons = sorted({info["unavailable_reason"] for row in missing
+                          if (info := db.unjs(row["scene_info"], {})).get("unavailable_reason")})
+        detail = f" ({'; '.join(reasons)})" if reasons else ""
+        return f"; evidence unavailable for {len(missing)} records{detail}"
 
     def _image(self, conn, job: dict, job_dir: Path) -> None:
         from .importer import import_image_results
@@ -287,10 +304,12 @@ class Worker:
         try:
             # Conversion may take time; cancellation remains available during it.
             video, kind = (out, "annotated") if job["render_video"] and out.exists() else (
-                playback_copy(Path(job["input_path"]), job_dir), "source")
+                playback_copy(Path(job["input_path"]), job_dir,
+                              lambda cmd: self._run(conn, job, cmd, job_dir / "playback.log",
+                                                    cooperative_stop=False, timeout_sec=3600)), "source")
             # Serialize the final import/status change with the cancel request.
             with db.transaction(conn):
-                if self._cancelled(conn, job["id"]):
+                if self._cancelled(conn, job["id"]) or self._stop.is_set():
                     return self._recover(conn, job, job_dir, "Cancelled")
                 d = json.loads(results.read_text(encoding="utf-8"))
                 if d.get("complete") is False or not isinstance(d.get("plates"), list) or type(d.get("frames")) is not int:
@@ -303,12 +322,12 @@ class Worker:
                 n = db.scalar(conn, "SELECT COUNT(*) FROM sightings WHERE run_id = ?", (run_id,))
                 conn.execute("UPDATE jobs SET result_complete=1, saved_frames=?, saved_window=? WHERE id=?",
                              (d["frames"], db.js(d.get("window_sec")), job["id"]))
-                self._done(conn, job["id"], run_id, f"done · {n} plate records")
+                self._done(conn, job["id"], run_id, f"done · {n} plate records" + self._evidence_note(conn, run_id))
         except Exception as exc:
             self._recover(conn, job, job_dir, f"Final import failed: {type(exc).__name__}: {exc}")
 
 
-def playback_copy(src: Path, job_dir: Path) -> Path:
+def playback_copy(src: Path, job_dir: Path, run_command) -> Path:
     """The source video if the browser can play it (H.264 in MP4), else an H.264 copy made with the bundled ffmpeg."""
     import cv2
     cap = cv2.VideoCapture(str(src))
@@ -320,12 +339,14 @@ def playback_copy(src: Path, job_dir: Path) -> Path:
     dst = job_dir / "playback.mp4"
     try:
         import imageio_ffmpeg
-        subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-loglevel", "error", "-i", str(src), "-an", "-c:v",
-                        "libx264", "-preset", "veryfast", "-crf", "26", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
-                        str(dst)], check=True, timeout=3600)
-        return dst
-    except Exception:                                                   # noqa: BLE001 - play the original then
+        cmd = [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-loglevel", "error", "-i", str(src), "-an", "-c:v",
+               "libx264", "-preset", "veryfast", "-crf", "26", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+               str(dst)]
+    except (ImportError, OSError, RuntimeError):
         return src
+    # The worker owns cancellation, timeout escalation and reaping this child.
+    # Let unrelated runner/database errors reach the existing recovery boundary.
+    return dst if run_command(cmd) == 0 else src
 
 
 def _tail(path: Path, n: int = 15) -> str:

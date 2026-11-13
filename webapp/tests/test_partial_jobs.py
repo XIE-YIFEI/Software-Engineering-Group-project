@@ -1,10 +1,13 @@
 """Web/recognition terminal recovery contract: no model or GPU required."""
 import json
+import io
+import subprocess
 import sys
+import threading
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from webapp.tests import test_web as W
@@ -126,6 +129,100 @@ class PartialJobsTests(unittest.TestCase):
         self.assertIn('evidence unavailable',self.state()['message'])
         self.assertIsNotNone(self.state()['run_id'])
 
+    def write_evidence(self):
+        import cv2
+        import numpy as np
+        for kind in ('crop', 'scene'):
+            self.assertTrue(cv2.imwrite(str(self.folder / f'{kind}.jpg'), np.zeros((20, 30, 3), np.uint8)))
+        self.row['evidence'] = {kind: str(self.folder / f'{kind}.jpg') for kind in ('crop', 'scene')}
+
+    def assert_unavailable_evidence(self, reason):
+        job = self.state()
+        self.assertIsNotNone(job['run_id'])
+        sighting = db.row(self.c, 'SELECT * FROM sightings WHERE run_id=?', (job['run_id'],))
+        self.assertEqual(sighting['compact'], self.row['compact'])
+        self.assertIsNone(sighting['crop_path'])
+        self.assertIsNone(sighting['scene_path'])
+        self.assertIn(reason, json.loads(sighting['scene_info'])['unavailable_reason'])
+        self.assertIn('evidence unavailable for 1 records', job['message'])
+        self.assertIn(reason, job['message'])
+        return sighting
+
+    def test_evidence_directory_failure_preserves_partial_records(self):
+        self.write_evidence()
+        self.save()
+        (self.st.media_dir / 'runs').write_bytes(b'conflicting file')
+        self.finish(1)
+        self.assertEqual(self.state()['status'], 'failed')
+        self.assert_unavailable_evidence('FileExistsError')
+
+    def test_evidence_copy_failure_preserves_cancelled_records(self):
+        self.write_evidence()
+        self.save()
+        self.cancel()
+        with patch('webapp.importer.shutil.copy2', side_effect=PermissionError('fixture permission denied')):
+            self.finish(0)
+        self.assertEqual(self.state()['status'], 'cancelled')
+        self.assert_unavailable_evidence('PermissionError')
+
+    def test_corrupt_or_empty_evidence_is_not_attached(self):
+        for kind, contents in (('crop', b'not an image'), ('scene', b'not an image'), ('crop', b'')):
+            with self.subTest(kind=kind, contents=contents):
+                self.write_evidence()
+                (self.folder / f'{kind}.jpg').write_bytes(contents)
+                self.save()
+                self.finish(1)
+                sighting = self.assert_unavailable_evidence(f'{kind} image could not be decoded')
+                police = W.client(self.app, 'police1')
+                traffic_client = W.client(self.app, 'traffic1')
+                self.assertEqual(police.get(f"/media/sightings/{sighting['id']}/crop").status_code, 404)
+                self.assertEqual(traffic_client.get(f"/media/sightings/{sighting['id']}/scene").status_code, 403)
+
+    def test_evidence_retry_clears_bad_attachments_and_restores_valid_pair(self):
+        self.write_evidence()
+        self.save()
+        self.finish(1)
+        run_id = self.state()['run_id']
+        (self.folder / 'scene.jpg').write_bytes(b'corrupt after first import')
+        self.finish(1)
+        self.assert_unavailable_evidence('scene image could not be decoded')
+        self.write_evidence()
+        self.finish(1)
+        self.assertEqual(self.state()['run_id'], run_id)
+        rows = db.rows(self.c, 'SELECT * FROM sightings WHERE run_id=?', (run_id,))
+        self.assertEqual(len(rows), 1)
+        self.assertIsNotNone(rows[0]['crop_path'])
+        self.assertIsNotNone(rows[0]['scene_path'])
+        self.assertNotIn('unavailable_reason', json.loads(rows[0]['scene_info']))
+        self.assertNotIn('evidence unavailable', self.state()['message'])
+
+    def test_evidence_database_error_still_rolls_back_import(self):
+        self.write_evidence()
+        self.save()
+        self.c.execute("CREATE TRIGGER fixture_evidence_error BEFORE UPDATE OF crop_path ON sightings "
+                       "BEGIN SELECT RAISE(ABORT, 'fixture evidence database error'); END")
+        self.finish(1)
+        self.assertIsNone(self.state()['run_id'])
+        self.assertIn('fixture evidence database error', self.state()['error'])
+        self.assertEqual(db.scalar(self.c, 'SELECT COUNT(*) FROM runs WHERE code=?',
+                                   (f'upload-{self.jid}',)), 0)
+
+    def save_final(self):
+        self.save()
+        final = {**self.partial, 'frames': 900, 'window_sec': [0, 30]}
+        final.pop('complete')
+        final.pop('frames_processed')
+        (self.folder / 'result.plates.json').write_text(json.dumps(final), encoding='utf-8')
+
+    def test_normal_final_reports_unavailable_evidence(self):
+        self.write_evidence()
+        (self.folder / 'scene.jpg').write_bytes(b'corrupt')
+        self.save_final()
+        with patch('webapp.worker.playback_copy', return_value=self.input):
+            self.finish(0)
+        self.assertEqual(self.state()['status'], 'done')
+        self.assert_unavailable_evidence('scene image could not be decoded')
+
     def test_nonconfirmed_row_does_not_create_registry_alert(self):
         self.row.update(status='TENTATIVE',alerts=[dict(code='ILLEGAL_FORMAT',severity='medium',message='stale')])
         self.save();self.finish(1)
@@ -157,6 +254,122 @@ class PartialJobsTests(unittest.TestCase):
         rc=self.w._run(self.c,self.job,[sys.executable,'-c','import time;time.sleep(60)'],self.folder/'log.txt')
         self.assertNotEqual(rc,0);self.assertLess(time.monotonic()-start,5)
         self.assertTrue((self.folder/'stop.request').exists())
+
+    def test_cancel_during_playback_reaps_child_and_recovers_partial(self):
+        self.save_final()
+        self.st.cancel_timeout_sec = 30  # A transcoder cannot honor recognition's stop.request.
+        ready = self.folder / 'transcoder.started'
+        errors, children = [], []
+        done = threading.Event()
+        popen = subprocess.Popen
+        run = self.w._run
+
+        def spawn(*args, **kwargs):
+            child = popen(*args, **kwargs)
+            children.append(child)
+            return child
+
+        def transcode(conn, job, cmd, log_path, **kwargs):
+            code = ("from pathlib import Path; import time; "
+                    f"Path({str(ready)!r}).touch(); time.sleep(10)")
+            return run(conn, job, [sys.executable, '-c', code], log_path, **kwargs)
+
+        def request():
+            conn = db.connect(self.st.db_path)
+            try:
+                deadline = time.monotonic() + 5
+                while not done.is_set() and time.monotonic() < deadline:
+                    if ready.exists():
+                        jobs.cancel(conn, self.user, self.jid)
+                        return
+                    time.sleep(.01)
+                errors.append('Transcoder did not start')
+            except Exception as exc:
+                errors.append(str(exc))
+            finally:
+                conn.close()
+
+        monitor = threading.Thread(target=request)
+        monitor.start()
+        start = time.monotonic()
+        try:
+            with patch('cv2.VideoCapture') as capture, \
+                 patch('imageio_ffmpeg.get_ffmpeg_exe', return_value='fixture-ffmpeg'), \
+                 patch('webapp.worker.subprocess.Popen', side_effect=spawn), \
+                 patch.object(self.w, '_run', side_effect=transcode):
+                capture.return_value.get.return_value = 0
+                self.finish(0)
+        finally:
+            done.set()
+            monitor.join(5)
+        self.assertFalse(errors, errors)
+        self.assertLess(time.monotonic() - start, 5)
+        self.assertEqual(len(children), 1)
+        self.assertIsNotNone(children[0].poll())
+        self.assertIsNone(self.w._proc)
+        self.assertEqual(self.state()['status'], 'cancelled')
+        self.assertEqual(self.state()['saved_frames'], 212)
+        self.assertEqual(self.state()['result_complete'], 0)
+        self.assertIsNotNone(self.state()['run_id'])
+        self.assertIn('fixture process error', (self.folder / 'log.txt').read_text('utf-8'))
+
+    def test_playback_timeout_reaps_silent_child(self):
+        start = time.monotonic()
+        rc = self.w._run(self.c, self.job, [sys.executable, '-c', 'import time; time.sleep(10)'],
+                         self.folder / 'playback.log', cooperative_stop=False, timeout_sec=.2)
+        self.assertNotEqual(rc, 0)
+        self.assertLess(time.monotonic() - start, 5)
+        self.assertIsNone(self.w._proc)
+        self.assertFalse(self.state()['cancel_requested'])
+
+    def test_playback_timeout_kills_child_that_ignores_terminate(self):
+        child = Mock()
+        child.stdout = io.StringIO('')
+        exited = threading.Event()
+        child.poll.side_effect = lambda: -9 if exited.is_set() else None
+        child.kill.side_effect = exited.set
+        child.wait.return_value = -9
+        with patch('webapp.worker.subprocess.Popen', return_value=child):
+            rc = self.w._run(self.c, self.job, ['fixture-transcoder'], self.folder / 'playback.log',
+                             cooperative_stop=False, timeout_sec=.01)
+        self.assertEqual(rc, -9)
+        child.terminate.assert_called_once()
+        child.kill.assert_called_once()
+        child.wait.assert_called_once()
+        self.assertTrue(child.stdout.closed)
+        self.assertIsNone(self.w._proc)
+
+    def test_playback_success_or_failure_selects_only_completed_copy(self):
+        for rc in (0, 1):
+            with self.subTest(returncode=rc):
+                self.save_final()
+                with patch('cv2.VideoCapture') as capture, \
+                     patch('imageio_ffmpeg.get_ffmpeg_exe', return_value='fixture-ffmpeg'), \
+                     patch.object(self.w, '_run', return_value=rc) as run:
+                    capture.return_value.get.return_value = 0
+                    self.finish(0)
+                self.assertEqual(self.state()['status'], 'done')
+                run.assert_called_once()
+                self.assertFalse(run.call_args.kwargs['cooperative_stop'])
+                self.assertEqual(run.call_args.kwargs['timeout_sec'], 3600)
+                result = db.row(self.c, 'SELECT * FROM runs WHERE id=?', (self.state()['run_id'],))
+                expected = self.folder / 'playback.mp4' if rc == 0 else self.input
+                self.assertEqual(Path(result['video_path']), expected)
+
+    def test_playback_timeout_with_zero_exit_is_not_a_completed_copy(self):
+        child = Mock()
+        child.stdout = io.StringIO('')
+        exited = threading.Event()
+        child.poll.side_effect = lambda: 0 if exited.is_set() else None
+        child.terminate.side_effect = exited.set
+        child.wait.return_value = 0
+        with patch('webapp.worker.subprocess.Popen', return_value=child):
+            rc = self.w._run(self.c, self.job, ['fixture-transcoder'], self.folder / 'playback.log',
+                             cooperative_stop=False, timeout_sec=.01)
+        self.assertNotEqual(rc, 0)
+        child.terminate.assert_called_once()
+        child.kill.assert_not_called()
+        child.wait.assert_called_once()
 
     def test_cooperative_zero_exit_still_cancelled(self):
         self.save();self.cancel();self.st.cancel_timeout_sec=5
