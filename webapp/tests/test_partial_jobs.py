@@ -154,7 +154,12 @@ class PartialJobsTests(unittest.TestCase):
         (self.st.media_dir / 'runs').write_bytes(b'conflicting file')
         self.finish(1)
         self.assertEqual(self.state()['status'], 'failed')
-        self.assert_unavailable_evidence('FileExistsError')
+        self.assertEqual(self.state()['saved_frames'], 212)
+        self.assertEqual(self.state()['result_complete'], 0)
+        sighting = self.assert_unavailable_evidence('crop evidence storage unavailable')
+        # A file in the parent path yields different OSError subclasses on Windows and Linux.
+        self.assertRegex(json.loads(sighting['scene_info'])['unavailable_reason'],
+                         r'^crop evidence storage unavailable \((FileExistsError|NotADirectoryError)\)$')
 
     def test_evidence_copy_failure_preserves_cancelled_records(self):
         self.write_evidence()
