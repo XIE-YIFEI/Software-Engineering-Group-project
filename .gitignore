@@ -25,6 +25,9 @@ env/
 outputs/
 runs/
 
+# Local Ultralytics runtime settings (machine paths and optional credentials).
+/Ultralytics/
+
 # ── Demo / session media (regenerable; derived from the CC BY 4.0 dataset) ───
 *.mp4
 *.avi

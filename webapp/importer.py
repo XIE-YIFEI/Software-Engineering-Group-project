@@ -96,6 +96,20 @@ def import_results(conn: sqlite3.Connection, settings: Settings, *, code: str, l
     inserted_plate). Returns the run id."""
     with open(results, encoding="utf-8") as f:
         d = json.load(f)
+    complete = d.get("complete") is not False
+    if not complete:
+        frames = d.get("frames_processed")
+        window = d.get("window_sec")
+        import math
+        if (type(frames) is not int or frames <= 0 or not isinstance(d.get("plates"), list)
+                or not isinstance(window, list) or len(window) != 2
+                or any(type(v) not in (int, float) or not math.isfinite(v) for v in window)
+                or window[1] < window[0] or type(d.get("fps")) not in (int, float)
+                or not math.isfinite(d["fps"]) or d["fps"] <= 0):
+            raise ValueError("Invalid or zero-progress partial result")
+        # Recovery snapshots have no supported traffic totals or simulated events.
+        d = {k: v for k, v in d.items() if k not in ("flow", "lanes", "simulated_events")}
+        flow_primary = False
     window = d.get("window_sec") or [0.0, 0.0]
     flow = d.get("flow") or {}
     reg = d.get("registry")
@@ -106,7 +120,8 @@ def import_results(conn: sqlite3.Connection, settings: Settings, *, code: str, l
             "results_path": rel(results), "results_sha256": sha256_file(results),
             "video_path": rel(video) if video else None, "video_kind": video_kind if video else None,
             "video_offset_sec": float(window[0] if video_offset is None else video_offset),
-            "image_path": None, "profile": d.get("profile"), "fps": d.get("fps"), "frames": d.get("frames"),
+            "image_path": None, "profile": d.get("profile"), "fps": d.get("fps"),
+            "complete": int(complete), "frames": d.get("frames") if complete else d["frames_processed"],
             "window_start_sec": window[0], "window_end_sec": window[1], "clock_origin": clock.iso(clock_origin),
             "provenance_note": note, "flow_primary": int(flow_primary), "count_line_y": flow.get("count_line_y"),
             "flow_total": flow.get("total"), "flow_by_type": db.js(flow.get("by_type") or {}),
@@ -129,7 +144,7 @@ def import_results(conn: sqlite3.Connection, settings: Settings, *, code: str, l
                 "last_sec": r["last_sec"], "seen_at": _at(clock_origin, r["first_sec"]),
                 "last_seen_at": _at(clock_origin, r["last_sec"]), "provenance": prov, "recorded_at": now},
                 key=("run_id", "natural_key"), keep=("crop_path", "scene_path", "scene_info"))
-            for a in r.get("alerts", []):
+            for a in r.get("alerts", []) if r.get("status") == "CONFIRMED" else []:
                 create_alert(conn, natural_key=f"{code}|{key}|{a['code']}", source="registry", code=a["code"],
                              severity=a["severity"], message=a["message"], seen_at=_at(clock_origin, r["first_sec"]),
                              provenance=prov, run_id=run_id, camera_id=camera_id, sighting_id=sid,
@@ -285,7 +300,10 @@ def attach_evidence(conn: sqlite3.Connection, settings: Settings, run_id: int, c
                 break
             dst_rel = f"runs/{code}/{src.name}"
             (settings.media_dir / dst_rel).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, settings.media_dir / dst_rel)
+            try:
+                shutil.copy2(src, settings.media_dir / dst_rel)
+            except OSError:
+                break  # Keep the sighting; its evidence remains unavailable.
             paths[kind] = dst_rel
         if len(paths) == 2:
             info = {k: ev.get(k) for k in ("frame", "time_sec", "vehicle_box", "plate_box")}
