@@ -702,73 +702,140 @@ def test_gate_inside_includes_usable_citations():
 
 def test_conversation_history_enforces_current_permissions_after_reveal_expiry_and_role_downgrade():
     st, app, c = setup()
-    # 1. Temporary reveal expiry: traffic1 reveals WTQ 9809, asks Copilot, then the reveal expires.
+    base = db.row(c, "SELECT * FROM sightings WHERE compact = 'WTQ9809' LIMIT 1")
+    for idx, (compact, plate_text, region) in enumerate([
+        ("W1", "W 1", "Kuala Lumpur"),
+        ("GOLD1460", "GOLD 1460", "Special series"),
+        ("PUTRAJAYA1", "PUTRAJAYA 1", "Special series"),
+        ("1M4U555", "1M4U 555", "Special series"),
+    ], start=1):
+        c.execute("INSERT OR IGNORE INTO plates (compact, plate_text, length) VALUES (?, ?, ?)",
+                  (compact, plate_text, len(compact)))
+        db.insert(c, "sightings", {
+            "run_id": base["run_id"], "camera_id": base["camera_id"], "natural_key": f"p:test_{idx}:{compact}",
+            "compact": compact, "plate_text": plate_text, "confidence": 0.96, "votes": 5, "status": "CONFIRMED",
+            "valid_format": 1, "vtype": "Car", "region": region, "track_ids": "[99]", "first_frame": 10 + idx,
+            "last_frame": 20 + idx, "first_sec": 1.0, "last_sec": 2.0, "seen_at": base["seen_at"],
+            "last_seen_at": base["last_seen_at"], "provenance": "camera", "crop_path": base["crop_path"],
+            "scene_path": base["scene_path"], "scene_info": base["scene_info"], "recorded_at": base["recorded_at"],
+        })
+    c.commit()
+
+    # 1. Temporary reveal removal and expiry: traffic1 reveals WTQ 9809, W 1, GOLD 1460, PUTRAJAYA 1, 1M4U 555.
     tc = W.client(app, "traffic1")
-    rev = W.search(tc, plate="WTQ 9809", purpose="Incident review", reveal_reason="Incident review")
-    assert rev.status_code == 200 and {x["plate"] for x in rev.json()["items"]} == {"WTQ 9809"}
+    for p_str in ("WTQ 9809", "W 1", "GOLD 1460", "PUTRAJAYA 1", "1M4U 555"):
+        rev = W.search(tc, plate=p_str, purpose="Incident review", reveal_reason="Incident review")
+        assert rev.status_code == 200 and {x["plate"] for x in rev.json()["items"]} == {p_str}
     traffic = user(c, "traffic1")
 
     def t_script(messages, tool_defs):
         if first_call(messages):
-            return [tool("search_plates", purpose="Traffic study", plate="WTQ 9809")]
-        rec = last_tool_result(messages)["records"][0]
-        return [text(f"Sighting [[{rec['ref']}]] shows {rec['plate']}.")]
-    out, _ = ask(c, traffic, "Where was WTQ 9809 seen?", t_script)
+            return [
+                tool("search_plates", purpose="Traffic study", plate="WTQ 9809"),
+                tool("search_plates", purpose="Traffic study", plate="W 1"),
+                tool("search_plates", purpose="Traffic study", plate="GOLD 1460"),
+                tool("search_plates", purpose="Traffic study", plate="PUTRAJAYA 1"),
+                tool("search_plates", purpose="Traffic study", plate="1M4U 555"),
+            ]
+        recs = [json.loads(b["content"])["records"][0] for b in messages[-2]["content"] if b.get("type") == "tool_result"]
+        parts = ", ".join(f"[[{r['ref']}]] shows {r['plate']}" for r in recs)
+        return [text(f"Sightings: {parts}.")]
+    out, _ = ask(c, traffic, "Where were WTQ 9809, W 1, GOLD 1460, PUTRAJAYA 1 and 1M4U 555 seen?", t_script)
     conv_t = out["done"]["conversation_id"]
-    ref_t = next(iter(out["done"]["display"]["citations"]))
-    # While the reveal is still active, the conversation shows the full plate.
+    cits_initial = out["done"]["display"]["citations"]
+    assert {v["plate"] for v in cits_initial.values()} == {"WTQ 9809", "W 1", "GOLD 1460", "PUTRAJAYA 1", "1M4U 555"}
+    # While the reveals are active, the authenticated conversation history shows all full plates.
     h_active = tc.get(f"/api/v1/copilot/conversations/{conv_t}").json()
-    assert h_active["items"][-1]["citations"][ref_t]["plate"] == "WTQ 9809"
-    assert not h_active["items"][-1]["citations"][ref_t]["masked"]
-    # Expire the temporary reveal and check normal query + conversation history + citations + transcript replay.
+    raw_active = json.dumps(h_active)
+    for p_str in ("WTQ 9809", "W 1", "GOLD 1460", "PUTRAJAYA 1", "1M4U 555"):
+        assert p_str in raw_active
+    assert all(not v["masked"] for v in h_active["items"][-1]["citations"].values())
+
+    # 1a. Explicit reveal removal for W 1 and GOLD 1460 before time expiry:
+    c.execute("DELETE FROM reveals WHERE user_id = ? AND compact IN ('W1', 'GOLD1460')", (traffic.id,))
+    c.commit()
+    h_partial = tc.get(f"/api/v1/copilot/conversations/{conv_t}").json()
+    raw_partial = json.dumps(h_partial)
+    for gone in ("W 1", "W1", "GOLD 1460", "GOLD1460", "1460"):
+        assert gone not in raw_partial, gone
+    assert "W ****" in raw_partial and "GOL ****" in raw_partial
+    assert "WTQ 9809" in raw_partial and "PUTRAJAYA 1" in raw_partial
+    tr_partial = json.dumps(store.transcript(c, conv_t))
+    for gone in ("W 1", "W1", "GOLD 1460", "GOLD1460", "1460"):
+        assert gone not in tr_partial, gone
+
+    # 1b. Expire all remaining reveals and verify conversation list, history, citations, and transcript replay:
     clock.set_now(clock.now() + timedelta(minutes=20))
     try:
         assert W.search(tc, plate="WTQ 9809", purpose="Incident review").status_code == 403
         convs = tc.get("/api/v1/copilot/conversations").json()
-        assert "9809" not in json.dumps(convs) and "WTQ ****" in convs[0]["title"]
+        raw_convs = json.dumps(convs)
+        for gone in ("WTQ 9809", "9809", "W 1", "W1", "GOLD 1460", "GOLD1460", "1460", "PUTRAJAYA 1", "1M4U 555"):
+            assert gone not in raw_convs, gone
+        assert "WTQ ****" in convs[0]["title"] and "W ****" in convs[0]["title"] and "GOL ****" in convs[0]["title"]
         h_exp = tc.get(f"/api/v1/copilot/conversations/{conv_t}").json()
         raw_exp = json.dumps(h_exp)
-        assert "WTQ 9809" not in raw_exp and "9809" not in raw_exp
-        cit_exp = h_exp["items"][-1]["citations"][ref_t]
-        assert cit_exp["plate"] == "WTQ ****" and cit_exp["masked"] is True
-        assert "?v=full" not in (cit_exp.get("crop_url") or "")
-        tr_exp = store.transcript(c, conv_t)
-        assert "WTQ 9809" not in json.dumps(tr_exp) and "9809" not in json.dumps(tr_exp)
-        out_follow, fake_follow = ask(c, traffic, "Can you summarize the earlier sighting?",
+        for gone in ("WTQ 9809", "9809", "W 1", "W1", "GOLD 1460", "GOLD1460", "1460", "PUTRAJAYA 1", "PUTRAJAYA1",
+                     "1M4U 555", "1M4U555", "555"):
+            assert gone not in raw_exp, gone
+        cits_exp = h_exp["items"][-1]["citations"]
+        assert {v["plate"] for v in cits_exp.values()} == {"WTQ ****", "W ****", "GOL ****", "PUT ****", "****"}
+        assert all(v["masked"] is True and "?v=full" not in (v.get("crop_url") or "") for v in cits_exp.values())
+        tr_exp = json.dumps(store.transcript(c, conv_t))
+        for gone in ("WTQ 9809", "9809", "W 1", "W1", "GOLD 1460", "GOLD1460", "1460", "PUTRAJAYA 1", "PUTRAJAYA1",
+                     "1M4U 555", "1M4U555", "555"):
+            assert gone not in tr_exp, gone
+        ref_t = next(iter(cits_exp))
+        out_follow, fake_follow = ask(c, traffic, "Can you summarize the earlier sightings?",
                                       [[text(f"Earlier sighting [[{ref_t}]] is masked.")]], conv=conv_t)
-        assert "WTQ 9809" not in json.dumps(fake_follow.calls[0]["messages"])
-        assert out_follow["done"]["display"]["citations"][ref_t]["plate"] == "WTQ ****"
+        replayed = json.dumps(fake_follow.calls[0]["messages"])
+        for gone in ("WTQ 9809", "9809", "W 1", "W1", "GOLD 1460", "GOLD1460", "1460", "PUTRAJAYA 1", "1M4U 555"):
+            assert gone not in replayed, gone
+        assert out_follow["done"]["display"]["citations"][ref_t]["masked"] is True
     finally:
         clock.set_now(None)
 
-    # 2. Role downgrade: police1 asks about XSD 4004, then is downgraded to traffic and logs in again.
+    # 2. Role downgrade: police1 asks about XSD 4004, W 1, and GOLD 1460, then is downgraded to traffic.
     police = user(c, "police1")
     aid = db.scalar(c, "SELECT id FROM alerts WHERE compact = 'XSD4004' ORDER BY id LIMIT 1")
 
     def p_script(messages, tool_defs):
         if first_call(messages):
-            return [tool("search_plates", purpose="Alert follow-up", plate="XSD 4004"),
-                    tool("get_alert", alert_id=aid)]
-        rec = last_tool_result(messages)["records"][0] if "records" in last_tool_result(messages) else \
-            json.loads(messages[-2]["content"][0]["content"])["records"][0]
-        return [text(f"Plate XSD 4004 was seen in [[{rec['ref']}]] with alert [[A:{aid}]].")]
-    out_p, _ = ask(c, police, "Check XSD 4004 and its alert", p_script)
+            return [
+                tool("search_plates", purpose="Alert follow-up", plate="XSD 4004"),
+                tool("search_plates", purpose="Alert follow-up", plate="W 1"),
+                tool("search_plates", purpose="Alert follow-up", plate="GOLD 1460"),
+                tool("get_alert", alert_id=aid),
+            ]
+        recs = [json.loads(b["content"])["records"][0] for b in messages[-2]["content"]
+                if b.get("type") == "tool_result" and "records" in json.loads(b["content"])]
+        parts = ", ".join(f"{r['plate']} in [[{r['ref']}]]" for r in recs)
+        return [text(f"Checked {parts} with alert [[A:{aid}]].")]
+    out_p, _ = ask(c, police, "Check XSD 4004, W 1 and GOLD 1460 and the alert", p_script)
     conv_p = out_p["done"]["conversation_id"]
     ac = W.client(app, "admin1")
     r_down = ac.patch(f"/api/v1/users/{police.id}", json={"role": "traffic"})
     assert r_down.status_code == 200 and r_down.json()["role"] == "traffic" and r_down.json()["masked"] is True
     pc_new = W.client(app, "police1")
     convs_p = pc_new.get("/api/v1/copilot/conversations").json()
-    assert "XSD 4004" not in json.dumps(convs_p) and "4004" not in json.dumps(convs_p)
+    raw_convs_p = json.dumps(convs_p)
+    for gone in ("XSD 4004", "4004", "W 1", "W1", "GOLD 1460", "GOLD1460", "1460"):
+        assert gone not in raw_convs_p, gone
     h_down = pc_new.get(f"/api/v1/copilot/conversations/{conv_p}").json()
     raw_down = json.dumps(h_down)
-    assert "XSD 4004" not in raw_down and "4004" not in raw_down and "registry" not in raw_down
+    for gone in ("XSD 4004", "4004", "W 1", "W1", "GOLD 1460", "GOLD1460", "1460", "registry"):
+        assert gone not in raw_down, gone
+    assert {cit["plate"] for cit in h_down["items"][-1]["citations"].values()} == {"XSD ****", "W ****", "GOL ****"}
     for cit in h_down["items"][-1]["citations"].values():
-        assert cit["plate"] == "XSD ****" and cit["masked"] is True
-        assert "?v=full" not in (cit.get("crop_url") or "") and cit.get("link") is None
+        assert cit["masked"] is True and "?v=full" not in (cit.get("crop_url") or "") and cit.get("link") is None
     # Even if a caller passes the stale in-memory police User object or calls transcript without user:
-    assert "XSD 4004" not in json.dumps(store.history(c, police, conv_p))
-    assert "XSD 4004" not in json.dumps(store.transcript(c, conv_p))
+    for raw_fn in (json.dumps(store.history(c, police, conv_p)), json.dumps(store.transcript(c, conv_p))):
+        for gone in ("XSD 4004", "4004", "W 1", "W1", "GOLD 1460", "GOLD1460", "1460"):
+            assert gone not in raw_fn, gone
+    _, fake_p_follow = ask(c, user(c, "police1"), "Repeat the earlier check.", [[text("Masked.")]], conv=conv_p)
+    replayed_p = json.dumps(fake_p_follow.calls[0]["messages"])
+    for gone in ("XSD 4004", "4004", "W 1", "W1", "GOLD 1460", "GOLD1460", "1460"):
+        assert gone not in replayed_p, gone
 
 
 # ---------------------------------------------------------------------------- the evaluation set

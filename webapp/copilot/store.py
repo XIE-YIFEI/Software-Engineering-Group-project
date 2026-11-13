@@ -21,7 +21,7 @@ from . import numbers
 _NON_PLATE_PREFIX = {
     "ISO", "USD", "MYR", "RM", "MAE", "RMSE", "MAPE", "ACT", "SOP", "PDF", "CSV", "ZIP",
     "API", "LLM", "VLM", "OCR", "FPS", "KMH", "SEC", "MIN", "MAX", "AVG", "SHA", "UTC",
-    "MYT", "SIM", "REF", "RUN", "CAM", "TC",
+    "MYT", "SIM", "REF", "RUN", "CAM", "TC", "FC", "TS", "FS", "IN", "OUT",
 }
 
 
@@ -58,7 +58,7 @@ def _mask_text(text: str, allowed: set[str]) -> str:
 
     def repl(m: re.Match[str]) -> str:
         prefix, digits, suffix = m.group(1), m.group(2), m.group(3) or ""
-        if prefix in _NON_PLATE_PREFIX or (len(digits) == 1 and not suffix):
+        if prefix in _NON_PLATE_PREFIX:
             return m.group(0)
         compact = f"{prefix}{digits}{suffix}"
         return m.group(0) if compact in allowed else mask_plate(compact)
@@ -179,9 +179,9 @@ def sanitize_display(conn: sqlite3.Connection, user: User, d: Dict[str, Any]) ->
         out["record_data"] = sanitize_citations(conn, user, out.get("record_data"))
     if user.masked:
         allowed = _allowed_compacts(conn, user)
-        for k in ("text", "steps", "panels", "check", "page"):
-            if k in out:
-                out[k] = _mask_value(out[k], allowed, user.role)
+        for k, v in list(out.items()):
+            if k not in ("citations", "record_data"):
+                out[k] = _mask_value(v, allowed, user.role)
     return out
 
 

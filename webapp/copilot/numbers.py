@@ -16,9 +16,14 @@ import math
 import re
 from typing import Any, Dict, Iterable, List, Set, Tuple
 
+from alpr.plates import SPECIAL_PREFIXES
+
+_SPECIAL_PREFIX_RE = "|".join(sorted(SPECIAL_PREFIXES, key=len, reverse=True))
 CITE = re.compile(r"\[\[[A-Z]:\d+\]\]")
-PLATE = re.compile(r"(?<![A-Za-z0-9])([A-Z]{1,3}) ?(\d{1,4})(?: ?([A-Z]{1,2}))?(?![A-Za-z0-9*])")
-MASKED = re.compile(r"(?<![A-Za-z0-9])[A-Z]{1,3} ?\*{4}")
+PLATE = re.compile(
+    rf"(?<![A-Za-z0-9])({_SPECIAL_PREFIX_RE}|[A-Z]{{1,3}}) ?(\d{{1,4}})(?: ?([A-Z]{{1,2}}))?(?![A-Za-z0-9*])"
+)
+MASKED = re.compile(r"(?<![A-Za-z0-9])(?:[A-Z]{1,3} ?)?\*{4}")
 TIME = re.compile(r"(?<!\d)(\d{1,2}):(\d{2})(?::(\d{2}))?(?!\d)")
 DATE = re.compile(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)")
 LIST_MARKER = re.compile(r"(?m)^\s*(?:\d+[.)]|#+ \d+[.)]?)\s")
@@ -109,7 +114,7 @@ def check(answer: str, sources: Iterable[Any], question: str = "") -> Dict[str, 
     for m in PLATE.finditer(text):
         compact = "".join(g for g in m.groups() if g)
         if len(m.group(2)) < 2 and not m.group(3):          # "TC1", "A1" ... are names, not plates
-            if compact in corpus.upper:
+            if compact in corpus.upper or (asked and compact in asked.upper):
                 spans.append(m.span())
             continue
         spans.append(m.span())
