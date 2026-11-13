@@ -10,9 +10,10 @@ import json
 import re
 import sqlite3
 from datetime import timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .. import clock, db
+from .. import clock, db, settings
 from ..privacy import can_see_full, mask_plate
 from ..security import Forbidden, User
 from ..services.common import can_play, visible_camera_ids
@@ -23,6 +24,88 @@ _NON_PLATE_PREFIX = {
     "API", "LLM", "VLM", "OCR", "FPS", "KMH", "SEC", "MIN", "MAX", "AVG", "SHA", "UTC",
     "MYT", "SIM", "REF", "RUN", "CAM", "TC", "FC", "TS", "FS", "IN", "OUT",
 }
+_ABBREV_START = re.compile(rf"^(?:{'|'.join(sorted(_NON_PLATE_PREFIX, key=len, reverse=True))})\d")
+_PLATE_COLUMNS = ("compact", "ocr_compact", "corrected_compact")
+
+
+def _add_abbrev_compact(val: Any, out: set[str]) -> None:
+    if not val:
+        return
+    v = re.sub(r"[^A-Z0-9]", "", str(val).upper())
+    if _ABBREV_START.match(v):
+        out.add(v)
+
+
+def _add_json_plates(raw: Optional[str], out: set[str]) -> None:
+    if not raw or "plate" not in raw:
+        return
+    try:
+        obj = json.loads(raw)
+    except Exception:                                                   # noqa: BLE001
+        return
+    stack: List[Any] = [obj]
+    while stack:
+        cur = stack.pop()
+        if isinstance(cur, dict):
+            for k, v in cur.items():
+                if k in ("plate", "corrected_plate") and isinstance(v, str):
+                    _add_abbrev_compact(v, out)
+                elif isinstance(v, (dict, list)):
+                    stack.append(v)
+                elif isinstance(v, str) and "plate" in v and v.lstrip()[:1] in "{[":
+                    _add_json_plates(v, out)
+        elif isinstance(cur, list):
+            stack.extend(x for x in cur if isinstance(x, (dict, list)))
+
+
+def _add_registry_plates(out: set[str]) -> None:
+    reg_path = Path(settings.active().registry_path)
+    if not reg_path.is_file():
+        return
+    try:
+        rc = sqlite3.connect(f"{reg_path.resolve().as_uri()}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return
+    try:
+        tables = {r[0] for r in rc.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()}
+        for tbl in ("vehicles", "sightings"):
+            if tbl in tables:
+                for (val,) in rc.execute(f'SELECT DISTINCT plate FROM "{tbl}" WHERE plate IS NOT NULL'):
+                    _add_abbrev_compact(val, out)
+    except sqlite3.Error:
+        return
+    finally:
+        rc.close()
+
+
+def _abbrev_plates(conn: sqlite3.Connection) -> set[str]:
+    """Plate values held by the system whose prefix collides with an abbreviation (RM 1234, FC 12, TC 1 ...).
+
+    The abbreviation exception only keeps text such as "MAE 3", "RM 50" or the zone "TC1" readable; it must never
+    expose an actual plate, so any compact stored in a plate column (sightings, alerts, lane events, lists, passes,
+    access events, reveals, corrections ...), recorded in audit/copilot JSON, or held in the vehicle registry is
+    masked like every other plate."""
+    out: set[str] = set()
+    tables = {t["name"] for t in db.rows(conn, "SELECT name FROM sqlite_master WHERE type = 'table'")}
+    for name in tables:
+        cols = {c["name"] for c in db.rows(conn, f'PRAGMA table_info("{name}")')}
+        for col in _PLATE_COLUMNS:
+            if col in cols:
+                for r in db.rows(conn, f'SELECT DISTINCT "{col}" AS v FROM "{name}" WHERE "{col}" IS NOT NULL'):
+                    _add_abbrev_compact(r["v"], out)
+    if "audit_log" in tables:
+        for r in db.rows(conn, "SELECT DISTINCT target_id FROM audit_log WHERE target_type = 'plate' AND target_id IS NOT NULL"):
+            _add_abbrev_compact(r["target_id"], out)
+    if "copilot_messages" in tables:
+        for r in db.rows(conn, "SELECT content, display FROM copilot_messages WHERE content IS NOT NULL OR display IS NOT NULL"):
+            _add_json_plates(r["content"], out)
+            _add_json_plates(r["display"], out)
+    if "copilot_actions" in tables:
+        for r in db.rows(conn, "SELECT params, result FROM copilot_actions WHERE params IS NOT NULL OR result IS NOT NULL"):
+            _add_json_plates(r["params"], out)
+            _add_json_plates(r["result"], out)
+    _add_registry_plates(out)
+    return out
 
 
 def _current_user(conn: sqlite3.Connection, user: Optional[User], conv_id: Optional[int] = None) -> Optional[User]:
@@ -52,36 +135,39 @@ def _allowed_compacts(conn: sqlite3.Connection, user: User) -> set[str]:
     return out
 
 
-def _mask_text(text: str, allowed: set[str]) -> str:
+def _mask_text(text: str, allowed: set[str], plates: frozenset[str] | set[str] = frozenset()) -> str:
+    """Mask every plate in `text` that is not in `allowed`. `plates` are actual plate values whose prefix is also an
+    abbreviation (see _abbrev_plates): those are never exempted."""
     if not text:
         return text
 
     def repl(m: re.Match[str]) -> str:
         prefix, digits, suffix = m.group(1), m.group(2), m.group(3) or ""
-        if prefix in _NON_PLATE_PREFIX:
-            return m.group(0)
         compact = f"{prefix}{digits}{suffix}"
+        if prefix in _NON_PLATE_PREFIX and compact not in plates:
+            return m.group(0)
         return m.group(0) if compact in allowed else mask_plate(compact)
 
     return numbers.PLATE.sub(repl, text)
 
 
-def _mask_value(val: Any, allowed: set[str], role: str = "traffic") -> Any:
+def _mask_value(val: Any, allowed: set[str], role: str = "traffic",
+                plates: frozenset[str] | set[str] = frozenset()) -> Any:
     if isinstance(val, str):
         s = val.strip()
         if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
             try:
                 parsed = json.loads(val)
             except Exception:                                           # noqa: BLE001
-                return _mask_text(val, allowed)
-            return json.dumps(_mask_value(parsed, allowed, role), ensure_ascii=False, separators=(",", ":"))
-        return _mask_text(val, allowed)
+                return _mask_text(val, allowed, plates)
+            return json.dumps(_mask_value(parsed, allowed, role, plates), ensure_ascii=False, separators=(",", ":"))
+        return _mask_text(val, allowed, plates)
     if isinstance(val, list):
-        return [_mask_value(x, allowed, role) for x in val]
+        return [_mask_value(x, allowed, role, plates) for x in val]
     if isinstance(val, dict):
         if val.get("type") == "thinking":
-            return {**val, "thinking": _mask_text(val.get("thinking") or "", allowed)} if val.get("thinking") else dict(val)
-        out = {k: (v if k in ("signature", "prompt_hash") else _mask_value(v, allowed, role))
+            return {**val, "thinking": _mask_text(val.get("thinking") or "", allowed, plates)} if val.get("thinking") else dict(val)
+        out = {k: (v if k in ("signature", "prompt_hash") else _mask_value(v, allowed, role, plates))
                for k, v in val.items() if role == "police" or k not in ("registry", "registry_vs_observed")}
         if "plate" in out and isinstance(out["plate"], str) and out["plate"].endswith("****"):
             if "masked" in out:
@@ -167,7 +253,7 @@ def sanitize_value(conn: sqlite3.Connection, user: User, val: Any) -> Any:
     user = _current_user(conn, user) or user
     if not user.masked:
         return val
-    return _mask_value(val, _allowed_compacts(conn, user), user.role)
+    return _mask_value(val, _allowed_compacts(conn, user), user.role, _abbrev_plates(conn))
 
 
 def sanitize_display(conn: sqlite3.Connection, user: User, d: Dict[str, Any]) -> Dict[str, Any]:
@@ -178,10 +264,10 @@ def sanitize_display(conn: sqlite3.Connection, user: User, d: Dict[str, Any]) ->
     if "record_data" in out:
         out["record_data"] = sanitize_citations(conn, user, out.get("record_data"))
     if user.masked:
-        allowed = _allowed_compacts(conn, user)
+        allowed, plates = _allowed_compacts(conn, user), _abbrev_plates(conn)
         for k, v in list(out.items()):
             if k not in ("citations", "record_data"):
-                out[k] = _mask_value(v, allowed, user.role)
+                out[k] = _mask_value(v, allowed, user.role, plates)
     return out
 
 
@@ -197,7 +283,7 @@ def conversation(conn: sqlite3.Connection, user: User, conv_id: int) -> Dict[str
     if c is None or c["user_id"] != user.id:                # only the owner reads a conversation
         raise LookupError("no such conversation")
     if user.masked and c.get("title"):
-        c = {**c, "title": _mask_text(c["title"], _allowed_compacts(conn, user))}
+        c = {**c, "title": _mask_text(c["title"], _allowed_compacts(conn, user), _abbrev_plates(conn))}
     return c
 
 
@@ -207,8 +293,8 @@ def transcript(conn: sqlite3.Connection, conv_id: int, user: Optional[User] = No
             for r in db.rows(conn, "SELECT role, content FROM copilot_messages WHERE conversation_id = ? ORDER BY seq",
                              (conv_id,))]
     if u is not None and u.masked:
-        allowed = _allowed_compacts(conn, u)
-        return [{"role": m["role"], "content": _mask_value(m["content"], allowed, u.role)} for m in rows]
+        allowed, plates = _allowed_compacts(conn, u), _abbrev_plates(conn)
+        return [{"role": m["role"], "content": _mask_value(m["content"], allowed, u.role, plates)} for m in rows]
     return rows
 
 
@@ -240,8 +326,8 @@ def conversations(conn: sqlite3.Connection, user: User, limit: int = 30) -> List
                          "AS questions FROM copilot_conversations c WHERE c.user_id = ? ORDER BY c.updated_at DESC LIMIT ?",
                    (user.id, limit))
     if user.masked:
-        allowed = _allowed_compacts(conn, user)
-        return [{**r, "title": _mask_text(r["title"], allowed)} for r in rows]
+        allowed, plates = _allowed_compacts(conn, user), _abbrev_plates(conn)
+        return [{**r, "title": _mask_text(r["title"], allowed, plates)} for r in rows]
     return rows
 
 
