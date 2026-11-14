@@ -70,6 +70,16 @@ def actions_on():
         config.ACTIONS_ENABLED = saved
 
 
+@contextmanager
+def history_test_clock():
+    """Keep the timestamp that used to be mistaken for the digits of 1M4U 555."""
+    clock.set_now(clock.now().replace(microsecond=555_000))
+    try:
+        yield
+    finally:
+        clock.set_now(None)
+
+
 # ---------------------------------------------------------------------------- tools: schemas and permissions
 def test_tool_schemas_are_valid_and_offered_per_role():
     names = set()
@@ -700,6 +710,33 @@ def test_gate_inside_includes_usable_citations():
     assert all(f"[[{k}]]" in q["text"] for k in q["citations"])
 
 
+def _plate_content(payload):
+    """Collect plate-bearing text in history and replay, without timestamps or IDs."""
+    if isinstance(payload, list):
+        for item in payload:
+            yield from _plate_content(item)
+    elif isinstance(payload, dict):
+        for key, value in payload.items():
+            if key in ("title", "text", "plate", "compact", "summary", "message", "note", "label", "thinking",
+                       "context", "value"):
+                if isinstance(value, str):
+                    yield value
+            elif key in ("look_alike_plates", "plates_unmatched", "lines"):
+                yield from value
+            elif key == "content" and payload.get("type") == "tool_result":
+                yield from _plate_content(json.loads(value))
+            else:
+                yield from _plate_content(value)
+
+
+def _assert_hidden_plates(payload, forbidden):
+    content = "\n".join(_plate_content(payload))
+    for plate in forbidden:
+        assert plate not in content, plate
+    return content
+
+
+@history_test_clock()
 def test_conversation_history_enforces_current_permissions_after_reveal_expiry_and_role_downgrade():
     st, app, c = setup()
     base = db.row(c, "SELECT * FROM sightings WHERE compact = 'WTQ9809' LIMIT 1")
@@ -742,8 +779,8 @@ def test_conversation_history_enforces_current_permissions_after_reveal_expiry_a
     def t_script(messages, tool_defs):
         if first_call(messages):
             return [tool("search_plates", purpose="Traffic study", plate=p) for p in plates_t]
-        recs = [json.loads(b["content"])["records"][0] for b in messages[-2]["content"] if b.get("type") == "tool_result"]
-        parts = ", ".join(f"[[{r['ref']}]] shows {r['plate']}" for r in recs)
+        recs = [json.loads(b["content"])["records"][0] for b in messages[-1]["content"] if b.get("type") == "tool_result"]
+        parts = ", ".join(f"[[{r['ref']}]] shows {r['plate']} ({r['plate'].replace(' ', '')})" for r in recs)
         return [text(f"Sightings: {parts}.")]
     out, _ = ask(c, traffic, "Where were RM 1234, FC 12, WTQ 9809, W 1, GOLD 1460, PUTRAJAYA 1 and 1M4U 555 seen?",
                  t_script)
@@ -752,9 +789,9 @@ def test_conversation_history_enforces_current_permissions_after_reveal_expiry_a
     assert {v["plate"] for v in cits_initial.values()} == set(plates_t)
     # While the reveals are active, the authenticated conversation history shows all full plates.
     h_active = tc.get(f"/api/v1/copilot/conversations/{conv_t}").json()
-    raw_active = json.dumps(h_active)
+    active_content = "\n".join(_plate_content(h_active))
     for p_str in plates_t:
-        assert p_str in raw_active
+        assert p_str in active_content and p_str.replace(" ", "") in active_content, p_str
     assert all(not v["masked"] for v in h_active["items"][-1]["citations"].values())
 
     # 1a. Explicit reveal removal for W 1, GOLD 1460, RM 1234 and FC 12 before time expiry:
@@ -762,48 +799,35 @@ def test_conversation_history_enforces_current_permissions_after_reveal_expiry_a
     c.commit()
     removed = ("W 1", "W1", "GOLD 1460", "GOLD1460", "1460", "RM 1234", "RM1234", "FC 12", "FC12")
     h_partial = tc.get(f"/api/v1/copilot/conversations/{conv_t}").json()
-    raw_partial = json.dumps(h_partial)
-    for gone in removed:
-        assert gone not in raw_partial, gone
-    assert "W ****" in raw_partial and "GOL ****" in raw_partial and "RM ****" in raw_partial and "FC ****" in raw_partial
-    assert "WTQ 9809" in raw_partial and "PUTRAJAYA 1" in raw_partial
+    partial_content = _assert_hidden_plates(h_partial, removed)
+    assert all(mask in partial_content for mask in ("W ****", "GOL ****", "RM ****", "FC ****"))
+    assert "WTQ 9809" in partial_content and "PUTRAJAYA 1" in partial_content
     assert "RM ****" in tc.get("/api/v1/copilot/conversations").json()[0]["title"]
-    tr_partial = json.dumps(store.transcript(c, conv_t))
-    for gone in removed:
-        assert gone not in tr_partial, gone
+    _assert_hidden_plates(store.transcript(c, conv_t), removed)
 
     # 1b. Expire all remaining reveals and verify conversation list, history, citations, and transcript replay:
     all_gone = ("WTQ 9809", "9809", "W 1", "W1", "GOLD 1460", "GOLD1460", "1460", "PUTRAJAYA 1", "PUTRAJAYA1",
                 "1M4U 555", "1M4U555", "555", "RM 1234", "RM1234", "FC 12", "FC12")
     clock.set_now(clock.now() + timedelta(minutes=20))
-    try:
-        assert W.search(tc, plate="WTQ 9809", purpose="Incident review").status_code == 403
-        convs = tc.get("/api/v1/copilot/conversations").json()
-        raw_convs = json.dumps(convs)
-        for gone in all_gone:
-            assert gone not in raw_convs, gone
-        title = convs[0]["title"]
-        assert all(m in title for m in ("RM ****", "FC ****", "WTQ ****", "W ****", "GOL ****")), title
-        h_exp = tc.get(f"/api/v1/copilot/conversations/{conv_t}").json()
-        raw_exp = json.dumps(h_exp)
-        for gone in all_gone:
-            assert gone not in raw_exp, gone
-        cits_exp = h_exp["items"][-1]["citations"]
-        assert {v["plate"] for v in cits_exp.values()} == {"RM ****", "FC ****", "WTQ ****", "W ****", "GOL ****",
-                                                           "PUT ****", "****"}
-        assert all(v["masked"] is True and "?v=full" not in (v.get("crop_url") or "") for v in cits_exp.values())
-        tr_exp = json.dumps(store.transcript(c, conv_t))
-        for gone in all_gone:
-            assert gone not in tr_exp, gone
-        ref_t = next(iter(cits_exp))
-        out_follow, fake_follow = ask(c, traffic, "Can you summarize the earlier sightings?",
-                                      [[text(f"Earlier sighting [[{ref_t}]] is masked.")]], conv=conv_t)
-        replayed = json.dumps(fake_follow.calls[0]["messages"])
-        for gone in all_gone:
-            assert gone not in replayed, gone
-        assert out_follow["done"]["display"]["citations"][ref_t]["masked"] is True
-    finally:
-        clock.set_now(None)
+    assert W.search(tc, plate="WTQ 9809", purpose="Incident review").status_code == 403
+    convs = tc.get("/api/v1/copilot/conversations").json()
+    assert convs[0]["created_at"].endswith(".555")
+    _assert_hidden_plates(convs, all_gone)
+    title = convs[0]["title"]
+    assert all(m in title for m in ("RM ****", "FC ****", "WTQ ****", "W ****", "GOL ****")), title
+    h_exp = tc.get(f"/api/v1/copilot/conversations/{conv_t}").json()
+    assert h_exp["created_at"].endswith(".555")
+    _assert_hidden_plates(h_exp, all_gone)
+    cits_exp = h_exp["items"][-1]["citations"]
+    assert {v["plate"] for v in cits_exp.values()} == {"RM ****", "FC ****", "WTQ ****", "W ****", "GOL ****",
+                                                       "PUT ****", "****"}
+    assert all(v["masked"] is True and "?v=full" not in (v.get("crop_url") or "") for v in cits_exp.values())
+    _assert_hidden_plates(store.transcript(c, conv_t), all_gone)
+    ref_t = next(iter(cits_exp))
+    out_follow, fake_follow = ask(c, traffic, "Can you summarize the earlier sightings?",
+                                  [[text(f"Earlier sighting [[{ref_t}]] is masked.")]], conv=conv_t)
+    _assert_hidden_plates(fake_follow.calls[0]["messages"], all_gone)
+    assert out_follow["done"]["display"]["citations"][ref_t]["masked"] is True
 
     # 2. Role downgrade: police1 asks about RM 1234, FC 12, XSD 4004, W 1, GOLD 1460 and registry-only FC 6092,
     #    then is downgraded to traffic.
@@ -816,7 +840,7 @@ def test_conversation_history_enforces_current_permissions_after_reveal_expiry_a
         if first_call(messages):
             return [tool("search_plates", purpose="Alert follow-up", plate=p) for p in plates_p] + \
                 [tool("plate_timeline", plate="FC 6092"), tool("get_alert", alert_id=aid)]
-        recs = [json.loads(b["content"])["records"][0] for b in messages[-2]["content"]
+        recs = [json.loads(b["content"])["records"][0] for b in messages[-1]["content"]
                 if b.get("type") == "tool_result" and "records" in json.loads(b["content"])]
         parts = ", ".join(f"{r['plate']} in [[{r['ref']}]]" for r in recs)
         return [text(f"Checked {parts} and FC 6092 with alert [[A:{aid}]].")]
@@ -829,36 +853,31 @@ def test_conversation_history_enforces_current_permissions_after_reveal_expiry_a
                  "RM 1234", "RM1234", "FC 12", "FC12", "FC 6092", "FC6092", "6092")
     pc_new = W.client(app, "police1")
     convs_p = pc_new.get("/api/v1/copilot/conversations").json()
-    raw_convs_p = json.dumps(convs_p)
-    for gone in down_gone:
-        assert gone not in raw_convs_p, gone
+    _assert_hidden_plates(convs_p, down_gone)
     h_down = pc_new.get(f"/api/v1/copilot/conversations/{conv_p}").json()
-    raw_down = json.dumps(h_down)
-    for gone in down_gone + ("registry",):
-        assert gone not in raw_down, gone
+    _assert_hidden_plates(h_down, down_gone)
+    assert "registry" not in json.dumps(h_down)
+    assert all(mask in h_down["items"][-1]["text"] for mask in ("RM ****", "FC ****", "XSD ****", "W ****", "GOL ****"))
     assert {cit["plate"] for cit in h_down["items"][-1]["citations"].values()} == {"RM ****", "FC ****", "XSD ****",
                                                                                    "W ****", "GOL ****"}
     for cit in h_down["items"][-1]["citations"].values():
         assert cit["masked"] is True and "?v=full" not in (cit.get("crop_url") or "") and cit.get("link") is None
     # Even if a caller passes the stale in-memory police User object or calls transcript without user:
-    for raw_fn in (json.dumps(store.history(c, police, conv_p)), json.dumps(store.transcript(c, conv_p))):
-        for gone in down_gone:
-            assert gone not in raw_fn, gone
-    _, fake_p_follow = ask(c, user(c, "police1"), "Repeat the earlier check.", [[text("Masked.")]], conv=conv_p)
-    replayed_p = json.dumps(fake_p_follow.calls[0]["messages"])
-    for gone in down_gone:
-        assert gone not in replayed_p, gone
+    _assert_hidden_plates(store.history(c, police, conv_p), down_gone)
+    _assert_hidden_plates(store.transcript(c, conv_p), down_gone)
+    # The role change also invalidates the old prompt/tool definitions for new questions.
+    out_p_follow, fake_p_follow = ask(c, user(c, "police1"), "Repeat the earlier check.", [[text("Masked.")]], conv=conv_p)
+    assert out_p_follow["done"]["conversation_id"] != conv_p
+    _assert_hidden_plates(fake_p_follow.calls[0]["messages"], down_gone)
 
     # 3. After retention purges sightings/plates/reveals for RM 1234 and FC 12 while conversation history remains,
     #    both colliding plates stay masked in history and transcript replay, while genuine abbreviations stay readable.
     for tbl in ("sightings", "plates", "reveals"):
         c.execute(f'DELETE FROM "{tbl}" WHERE compact IN (\'RM1234\', \'FC12\')')
     c.commit()
-    for raw_post in (json.dumps(tc.get(f"/api/v1/copilot/conversations/{conv_t}").json()),
-                     json.dumps(store.transcript(c, conv_t))):
-        for gone in ("RM 1234", "RM1234", "FC 12", "FC12"):
-            assert gone not in raw_post, gone
-        assert "RM ****" in raw_post and "FC ****" in raw_post
+    for payload in (tc.get(f"/api/v1/copilot/conversations/{conv_t}").json(), store.transcript(c, conv_t)):
+        content = _assert_hidden_plates(payload, ("RM 1234", "RM1234", "FC 12", "FC12"))
+        assert "RM ****" in content and "FC ****" in content
     assert store._mask_text(plain, set(), store._abbrev_plates(c)) == plain
 
 
