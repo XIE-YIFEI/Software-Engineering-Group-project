@@ -4,6 +4,7 @@
 # light test set (no OCR, OpenVINO or download tools). Keep it ASCII-only.
 numpy==1.26.4
 opencv-python==4.11.0.86
+imageio-ffmpeg==0.8.1
 pyyaml==6.0.3
 pillow==13.0.0
 ultralytics==8.4.171

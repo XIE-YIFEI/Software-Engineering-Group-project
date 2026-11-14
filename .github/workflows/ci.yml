@@ -44,3 +44,5 @@ jobs:
 
       - name: Web system tests (FastAPI TestClient)
         run: python webapp/tests/test_web.py
+      - name: Web cancellation and partial recovery tests
+        run: python webapp/tests/test_partial_jobs.py

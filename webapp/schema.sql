@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS runs (
     profile TEXT,
     fps REAL,
     frames INTEGER,
+    complete INTEGER NOT NULL DEFAULT 1,     -- 0 = terminal partial snapshot, not full traffic analysis
     window_start_sec REAL,
     window_end_sec REAL,
     clock_origin TEXT NOT NULL,               -- local time of source second 0
@@ -81,7 +82,7 @@ CREATE TABLE IF NOT EXISTS runs (
     count_line_y REAL,
     flow_total INTEGER,
     flow_by_type TEXT,                        -- JSON
-    registry_rules TEXT,                      -- JSON list, NULL = registry checks were off
+    registry_rules TEXT,                      -- JSON list; NULL may also mean metadata unavailable in old partials
     registry_disclaimer TEXT,
     processing TEXT,                          -- JSON (model backend, headless, FPS) when the results have it
     job_id INTEGER,
@@ -417,6 +418,11 @@ CREATE TABLE IF NOT EXISTS jobs (
     kind TEXT NOT NULL CHECK (kind IN ('image', 'video')),
     status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'done', 'failed', 'cancelled')),
     progress REAL NOT NULL DEFAULT 0,
+    cancel_requested INTEGER NOT NULL DEFAULT 0,
+    expected_frames INTEGER,
+    result_complete INTEGER,
+    saved_frames INTEGER,
+    saved_window TEXT,
     message TEXT NOT NULL DEFAULT '',
     input_path TEXT NOT NULL,
     original_name TEXT NOT NULL,

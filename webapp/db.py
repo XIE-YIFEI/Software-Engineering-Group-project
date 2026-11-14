@@ -31,6 +31,17 @@ def connect(path: Path) -> sqlite3.Connection:
 
 def init(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+    # Additive migration for existing installations, serialized across connections.
+    with transaction(conn):
+        for table, columns in {
+            "runs": {"complete": "INTEGER NOT NULL DEFAULT 1"},
+            "jobs": {"cancel_requested": "INTEGER NOT NULL DEFAULT 0", "expected_frames": "INTEGER",
+                     "result_complete": "INTEGER", "saved_frames": "INTEGER", "saved_window": "TEXT"},
+        }.items():
+            present = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+            for name, definition in columns.items():
+                if name not in present:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
     conn.execute("INSERT OR IGNORE INTO meta VALUES ('schema_version', ?)", (SCHEMA_VERSION,))
 
 
