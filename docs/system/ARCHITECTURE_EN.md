@@ -36,7 +36,8 @@ for three Malaysian user groups:
 | System administrator | `admin` | users, data import, uploads, retention, audit log |
 
 Out of scope for this step, but designed for (section 11): live RTSP cameras, drawing lanes in the browser, a public
-congestion-outlook page without plates, push notifications, and the generative/agentic AI assistant (next task).
+congestion-outlook page without plates and push notifications. The generative / agentic AI assistant was built next:
+SECS Copilot, [COPILOT_EN.md](COPILOT_EN.md).
 
 ## 2. Components and data flow
 
@@ -168,7 +169,7 @@ Masking and audit happen in the service layer, so the API cannot bypass them.
 media); the list with the roles allowed to call each one is in [API_EN.md](API_EN.md), and the interactive reference
 is generated at `/docs`.
 
-**Service functions** (what the API wraps and what the AI assistant will call), e.g.
+**Service functions** (what the API wraps and what the AI assistant, SECS Copilot, calls as its tools), e.g.
 `plates.search(conn, user, SightingQuery) -> Page[SightingOut]`, `plates.timeline_of(conn, user, plate) -> Timeline`,
 `alerts.transition(conn, user, alert_id, to, note, corrected_plate) -> AlertDetail`,
 `forecast.state(conn, user, day, at) -> ForecastState`,
@@ -600,7 +601,8 @@ laptop: no WSL / Docker, so the first GitHub run is the Linux check).
 - **Public congestion outlook without plates:** the forecast services return only aggregated section data; a public
   page needs no new data access.
 - **Push notifications:** every alert is created by one function, the single hook point.
-- **AI assistant:** service functions as tools (section 4), acting as the logged-in user.
+- **AI assistant:** built as SECS Copilot ([COPILOT_EN.md](COPILOT_EN.md)): the service functions are its tools
+  (section 4), called as the logged-in user; it is read-only this semester (its action cards are switched off).
 
 ## 12. Build order
 

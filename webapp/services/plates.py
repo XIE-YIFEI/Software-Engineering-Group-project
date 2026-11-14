@@ -107,6 +107,8 @@ def _authorise_search(conn: sqlite3.Connection, user: User, q: SightingQuery) ->
         raise ValueError("choose the purpose of this search (it is recorded in the audit log)")
     plate = fuzzy.compact(q.plate)
     if user.masked and plate and "*" not in q.plate and "?" not in q.plate:
+        if not q.reveal_reason and can_see_full(conn, user, None, plate):
+            return                    # an active reveal of this plate (made with a reason) covers it until it expires
         if not q.reveal_reason:
             raise Forbidden("searching by a plate number reveals that plate: choose a reason first")
         reveal(conn, user, q.reveal_reason, note=f"search by plate number ({q.purpose})", compact=plate)

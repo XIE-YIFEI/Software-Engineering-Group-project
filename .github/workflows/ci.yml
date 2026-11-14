@@ -1,5 +1,6 @@
-# Runs on every push and pull request: the 86 unit tests of the recognition code (no models, no GPU) and the tests of
-# the web system (FastAPI TestClient on a temporary database filled from the committed demo results).
+# Runs on every push and pull request: the 86 unit tests of the recognition code (no models, no GPU), the tests of
+# the web system (FastAPI TestClient on a temporary database filled from the committed demo results) and the tests of
+# SECS Copilot, the AI assistant (a deterministic fake model stands in for Claude: no network, no API key).
 name: CI
 
 on:
@@ -40,3 +41,6 @@ jobs:
 
       - name: Web system tests (FastAPI TestClient)
         run: python webapp/tests/test_web.py
+
+      - name: SECS Copilot tests (fake model, no network, no API key)
+        run: python webapp/tests/test_copilot.py

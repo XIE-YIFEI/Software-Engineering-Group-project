@@ -13,8 +13,8 @@
 **本次范围：** 登录与角色；总览；车牌检索与记录；告警中心；交通分析；拥堵预测；上传与分析；名单；隐私与审计；报表；
 以及商定的六项补充功能（按角色打码车牌、点击跳到视频对应时刻、门岗模式、限时访客通行证与超时滞留、跨摄像头时间线、
 证据包）和“多开车道会怎样”的推演（what-if）。
-**已预留设计、本次不实现：** 实时 RTSP 摄像头、在浏览器里画车道、不含车牌的公众拥堵预报页、推送通知、生成式 / 智能体
-AI 助手（下一个任务）。
+**已预留设计、本次不实现：** 实时 RTSP 摄像头、在浏览器里画车道、不含车牌的公众拥堵预报页、推送通知。**随后已实现：**
+生成式 / 智能体 AI 助手 SECS Copilot（FR-24 至 FR-32；[COPILOT_ZH.md](COPILOT_ZH.md)）。
 
 ## 2. 用户及其收益
 
@@ -91,6 +91,15 @@ AI 助手（下一个任务）。
 | FR-21 | 导入程序 | 载入所有已提交的结果；可重复运行（保留告警处理状态）；记录每个源文件的 SHA-256；复现已提交的预测 | `test_importer_*`（3 个测试） |
 | FR-22 | 有文档的 API、可复用的服务函数 | `/docs` 提供 OpenAPI 文档；带类型的服务函数（供 AI 助手调用） | `test_api_documentation_lists_the_service_endpoints` |
 | FR-23 | 识别流水线可选的证据输出 | `--evidence DIR` 保存每条记录最好的车牌截图及其所在整帧，并在 JSON 里加上路径；原有 JSON 字段全部不变 | `test_evidence_output_saves_crop_and_frame_and_changes_no_other_field`（alpr）+ 四个演示配置重跑对比（见测试报告） |
+| FR-24 | AI 助手只通过工具回答，带着用户的权限 | 每个角色只看到自己的工具，其他工具被拒绝；每次调用都由服务层限定范围、打码并审计（`via: assistant`） | `test_tool_schemas_are_valid_and_offered_per_role`、`test_tools_inherit_permissions_masking_and_audit`（copilot） |
+| FR-25 | 用问题的语言流式回答，展示工具步骤和引用标签 | 事件 `meta` / `step` / `cite` / `text` / `done`；每个引用编号都由工具返回；对话记录只追加、原样重放 | `test_chat_streams_tool_steps_citations_and_stores_an_append_only_transcript`、`test_copilot_api_pages_and_streamed_chat` |
+| FR-26 | 本学期 AI 助手只读（计划修订版 2）：四类 AI 操作即使用户愿意确认也被拒绝 | `prepare_*` 工具不提供给任何角色，调用即被拒绝；服务端拒绝准备或确认卡片（403），之前已准备的卡片也一样；业务记录不变，车牌不被解除打码；这些操作仍在各自页面上，由有权限的角色完成。卡片代码保留休眠，留给春季计划（只有所有者能确认、CSRF、会过期、备注和理由由用户填写） | `test_copilot_is_read_only_the_four_actions_are_refused_and_nothing_changes`；休眠代码（在其测试中临时开启）：`test_visitor_pass_card_writes_nothing_until_the_guard_confirms`、`test_alert_and_reveal_cards_need_the_users_note_and_reason` |
+| FR-27 | 对每段生成文字做数字核对 | 每个数字、时间、日期和车牌都要在工具结果中找到；其余的被标出 | `test_number_check_flags_invented_numbers_and_accepts_rounding` |
+| FR-28 | 告警的“AI 解读” | 存储数值和推导数字；SOP 步骤引用自 `sop.yaml`；法条只来自 `legal.yaml`；不下“已构成违法”的结论 | `test_sop_file_is_complete_bilingual_and_marked_as_a_draft_until_reviewed`、`test_explain_alert_uses_the_stored_values_the_sop_and_only_verified_legal_sections` |
+| FR-29 | 生成文档 | 案件摘要附进证据包；每日交通与拥堵回顾；标注 AI 生成；经过数字核对；可导出 PDF | `test_case_summary_is_added_to_the_evidence_pack_and_marked`、`test_daily_review_facts_template_number_check_and_pdf` |
+| FR-30 | 可选的图像检查，默认关闭 | 由管理员开启（记录审计）；仅限交警；每张发送图像的 SHA-256 记入审计日志；措辞中性 | `test_image_checks_are_off_by_default_police_only_audited_and_neutral` |
+| FR-31 | 离线模式 | 没有密钥或网络时：用工具和模板回答快捷问题，标注“离线：模板回答，非 AI 生成” | `test_offline_mode_answers_quick_questions_with_labelled_templates` |
+| FR-32 | 限额、费用记录、健壮性 | 每用户频率限制、每日预算、token 与步数上限；按 `usage` 计算每次调用的费用；拒答和故障不会破坏对话记录 | `test_rate_limit_cost_logging_and_prices`、`test_refusals_and_failures_never_corrupt_the_transcript`、`test_the_anthropic_sdk_request_and_stream_parsing` |
 
 ## 6. 非功能需求
 

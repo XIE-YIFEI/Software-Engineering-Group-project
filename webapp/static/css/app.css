@@ -194,3 +194,60 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
                      radial-gradient(900px 500px at 110% 110%, rgba(94, 92, 230, 0.16), transparent), var(--bg); }
 .login .card { width: min(400px, 94vw); padding: 26px; }
 .login form { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+
+/* ---- SECS Copilot (static/js/copilot.js): slide-in panel, full page, answers, chips, cards ---- */
+.cp-open { border-color: rgba(10, 132, 255, 0.5); color: #b7d8ff; }
+.cp-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(470px, 100vw); z-index: 60; background: var(--card-solid);
+             border-left: 1px solid var(--line-2); box-shadow: -12px 0 40px rgba(0, 0, 0, 0.45); display: flex; }
+.cp-drawer[hidden] { display: none; }
+.cp-panel .cp-main, .cp-page .cp-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.cp-panel .cp-main { height: 100vh; }
+.cp-page { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 14px; align-items: start; }
+.cp-page .cp-main { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); height: calc(100vh - 110px); }
+.cp-convs { max-height: calc(100vh - 110px); overflow-y: auto; }
+.cp-conv { position: relative; padding: 7px 30px 7px 8px; border-radius: var(--radius-s); cursor: pointer; font-size: 13px; }
+.cp-conv:hover { background: rgba(255, 255, 255, 0.05); } .cp-conv.on { background: rgba(10, 132, 255, 0.14); }
+.cp-conv .btn { position: absolute; right: 2px; top: 4px; padding: 2px 6px; }
+.cp-head { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.cp-head select.small { padding: 3px 6px; font-size: 12px; }
+.cp-list { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
+.cp-quick { padding: 8px 14px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cp-foot { padding: 10px 14px 12px; border-top: 1px solid var(--line); }
+.cp-foot textarea { flex: 1; resize: vertical; min-height: 40px; max-height: 160px; }
+.cp-intro { color: var(--text-2); font-size: 13px; }
+.cp-msg.user { align-self: flex-end; max-width: 88%; }
+.cp-msg.user .cp-bubble { background: rgba(10, 132, 255, 0.18); border: 1px solid rgba(10, 132, 255, 0.35); border-radius: 12px 12px 4px 12px;
+                          padding: 7px 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cp-msg.ai { border: 1px solid var(--line); background: rgba(255, 255, 255, 0.025); border-radius: 12px; padding: 10px 12px; }
+.cp-meta { display: flex; align-items: center; gap: 6px; font-size: 11px; margin-bottom: 6px; }
+.cp-text { font-size: 13.5px; line-height: 1.55; overflow-wrap: anywhere; }
+.cp-text ul, .cp-text ol { margin: 4px 0 8px; padding-left: 20px; } .cp-text li { margin: 2px 0; }
+.cp-text h4 { margin: 8px 0 4px; font-size: 13.5px; } .cp-p { margin: 0 0 8px; }
+.cp-text code, .cp-step code { font-family: var(--mono); font-size: 12px; background: rgba(255, 255, 255, 0.06); padding: 0 4px; border-radius: 4px; }
+.cp-text table.t { margin: 6px 0; font-size: 12px; }
+.cite { display: inline-flex; align-items: center; gap: 5px; border: 1px solid rgba(10, 132, 255, 0.45); background: rgba(10, 132, 255, 0.12);
+        color: #b7d8ff; border-radius: 999px; padding: 0 8px; font: 500 12px/1.6 var(--font); cursor: pointer; white-space: nowrap; margin: 0 1px; }
+.cite:hover { background: rgba(10, 132, 255, 0.24); }
+.cite.sim { border-color: rgba(191, 90, 242, 0.5); background: rgba(191, 90, 242, 0.12); color: #e2c2f6; }
+.cite .d { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.cite.bad { border-color: rgba(255, 69, 58, 0.6); background: rgba(255, 69, 58, 0.12); color: #ff8a82; cursor: help; }
+.cp-steps { font-size: 12px; color: var(--text-2); margin: 2px 0 6px; }
+.cp-steps summary { cursor: pointer; }
+.cp-step { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px; flex-wrap: wrap; }
+.cp-step-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex: none; }
+.cp-step-dot.run { background: var(--yellow); animation: cp-pulse 1s infinite alternate; }
+.cp-step.err .cp-step-dot { background: var(--red); }
+@keyframes cp-pulse { from { opacity: 0.35; } to { opacity: 1; } }
+.cp-check { font-size: 12px; border-radius: var(--radius-s); padding: 5px 9px; }
+.cp-check.ok { color: #6ee38f; background: rgba(48, 209, 88, 0.08); border: 1px solid rgba(48, 209, 88, 0.3); }
+.cp-check.bad { color: #ffd59a; background: rgba(255, 159, 10, 0.1); border: 1px solid rgba(255, 159, 10, 0.45); cursor: help; }
+.cp-card { border: 1px solid rgba(255, 214, 10, 0.45); background: rgba(255, 214, 10, 0.06); border-radius: 10px; padding: 9px 11px; }
+.cp-card.confirmed { border-color: rgba(48, 209, 88, 0.45); background: rgba(48, 209, 88, 0.06); }
+.cp-card.cancelled, .cp-card.expired { border-color: var(--line-2); background: transparent; opacity: 0.8; }
+.cp-card.failed { border-color: rgba(255, 69, 58, 0.5); }
+.cp-card textarea, .cp-card input, .cp-card select { width: 100%; }
+.cp-sop { border: 1px solid rgba(64, 200, 224, 0.4); background: rgba(64, 200, 224, 0.06); border-radius: 10px; padding: 9px 11px; font-size: 13px; }
+.cp-sop ol, .cp-sop ul { margin: 6px 0; padding-left: 20px; } .cp-sop li { margin: 3px 0; }
+.cp-dialog { width: min(560px, 94vw); }
+.cp-explain { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+@media (max-width: 1100px) { .cp-page { grid-template-columns: 1fr; } .cp-convs { max-height: 220px; } }

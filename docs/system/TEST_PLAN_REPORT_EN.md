@@ -42,6 +42,9 @@ results; no page of any role has a script error; every functional requirement (F
 | end-to-end upload (video + photo) | **done**: 5 plates from the video (the same as the demo), 1 from the photo |
 | browser check (32 page loads, 4 roles) | **no script errors** |
 | performance | median 20–65 ms for the interactive pages' API calls (section 8) |
+| SECS Copilot tests (fake model, no network), project venv | **19 / 19 passed** (section 12) |
+| copilot evaluation runner self-check | ideal stand-in **32 / 32**, empty answers **0 / 32** (section 12) |
+| copilot UI, offline mode (4 roles, browser) | panel, page, chips, "AI explain", case summary, daily review, admin card: **no script errors** |
 
 ## 4. The 22 web tests
 
@@ -186,3 +189,28 @@ the second completed (2.6 GB installed). Result on 24 October 2026: **86 / 86** 
 - **Accessibility:** every chart has a table view and colours are never the only signal, but no screen-reader test
   was done.
 - **Local Python is a 3.12 beta**; CI uses a stable 3.12.
+
+## 12. SECS Copilot (the AI assistant)
+
+`python webapp/tests/test_copilot.py` (also in CI): 20 tests with a scripted fake model in place of Claude, no network
+and no API key. What each covers is listed in [COPILOT_EN.md](COPILOT_EN.md), section 9: tool schemas and tools per
+role; permission inheritance, masking and audit (`via: assistant`); the streamed chat loop, citation chips and the
+append-only transcript; the number check; the read-only policy (the four AI actions refused, nothing changed, no plate
+unmasked); the dormant action cards (switched on in their tests: nothing written before Confirm); the SOP and legal sources of
+"AI explain"; the case summary in the evidence pack; the daily review; offline mode; refusals and failures; the rate
+limit and cost logging; retention; the optional image checks; the API and pages; the exact request the Anthropic SDK
+sends (mock HTTP transport); the evaluation runner's self-check.
+
+**Evaluation set.** 32 questions (`webapp/copilot/eval/questions.yaml`), expected answers computed from the database,
+programmatic grading. The runner and grader were checked without the API: an ideal stand-in scores 32/32 and empty
+answers 0/32. The run on the real model needs an API key and the user's approval of the estimated cost; its results
+will be added here.
+
+**Defects found while building it and fixed:** a header line followed by a list in the same paragraph showed literal
+"- " markers in the panel (the Markdown renderer now groups lines); three threads opening the SIMULATED registry for
+the first time at once could read it half-built (opening is now serialised); the what-if's "minutes over the threshold"
+and the congestion episodes' "congested minutes" (two definitions, 146 vs 152 minutes) are now named differently, so
+the model cannot mix them up.
+
+**Not covered yet:** answer quality on the real model (the evaluation run, above); load (many users asking at once);
+the image checks on real crops (they need an API key and the administrator's switch).

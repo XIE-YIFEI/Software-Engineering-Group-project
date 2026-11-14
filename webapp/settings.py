@@ -32,6 +32,9 @@ DEFAULTS: Dict[str, object] = {
     "session_hours": 8,                # a login lasts this long
     "default_pass_hours": 4,           # default validity of a new visitor pass
     "max_speed_kmh": 250,              # cross-camera timeline: faster implied travel = impossible (as alpr.registry)
+    "copilot_retention_days": 30,      # AI assistant conversations, prepared actions and daily reviews
+    "copilot_questions_per_hour": 30,  # per user; the AI features count together
+    "copilot_daily_budget_usd": 5,     # all users together; past it the assistant answers offline (templates)
 }
 
 # Reasons offered for a search ("purpose", the "why" of the audit log) and for revealing a masked plate.

@@ -12,6 +12,7 @@ system for traffic police, guardhouse security and traffic managers.
 | API overview and the service functions for the AI assistant / API 概览及供 AI 助手调用的服务函数 | [API_EN.md](API_EN.md) | [API_ZH.md](API_ZH.md) |
 | Test plan and report / 测试计划与报告 | [TEST_PLAN_REPORT_EN.md](TEST_PLAN_REPORT_EN.md) | [TEST_PLAN_REPORT_ZH.md](TEST_PLAN_REPORT_ZH.md) |
 | Demo walkthrough with screenshots (three defence scenarios) / 演示走查及截图（三个答辩场景） | [DEMO_WALKTHROUGH_EN.md](DEMO_WALKTHROUGH_EN.md) | [DEMO_WALKTHROUGH_ZH.md](DEMO_WALKTHROUGH_ZH.md) |
+| SECS Copilot, the AI assistant: design, tools, prompts, privacy, cost, tests and evaluation, demo script / AI 助手 SECS Copilot：设计、工具、提示词、隐私、费用、测试与评测、演示脚本 | [COPILOT_EN.md](COPILOT_EN.md) | [COPILOT_ZH.md](COPILOT_ZH.md) |
 
 ## Quick start / 快速开始
 
@@ -24,10 +25,13 @@ system for traffic police, guardhouse security and traffic managers.
 ```
 
 Then open <http://127.0.0.1:8000> (API reference at `/docs`). Demo accounts: `webapp/seed/demo_users.yaml`, local
-demo only. Tests: `python alpr/tests/test_alpr.py` and `python webapp/tests/test_web.py` (both run in CI on every
-push).
+demo only. Tests: `python alpr/tests/test_alpr.py`, `python webapp/tests/test_web.py` and
+`python webapp/tests/test_copilot.py` (all three run in CI on every push). The AI assistant needs `ANTHROPIC_API_KEY`
+in the server's environment; without it, it runs in offline mode ([COPILOT_EN.md](COPILOT_EN.md), section 8).
 然后打开 <http://127.0.0.1:8000>（API 参考在 `/docs`）。演示账号见 `webapp/seed/demo_users.yaml`，只用于本地演示。
-测试：`python alpr/tests/test_alpr.py` 和 `python webapp/tests/test_web.py`（每次推送都在 CI 中运行）。
+测试：`python alpr/tests/test_alpr.py`、`python webapp/tests/test_web.py` 和 `python webapp/tests/test_copilot.py`
+（三者在每次推送时都在 CI 中运行）。AI 助手需要服务器环境中的 `ANTHROPIC_API_KEY`；没有它就以离线模式运行
+（[COPILOT_ZH.md](COPILOT_ZH.md) 第 8 节）。
 
 The vehicle registry is SIMULATED and every violator is a fictitious X-series plate; see the requirements, section 7.
 车辆登记库是模拟的，所有违规车辆都是虚构的 X 开头车牌；见需求规格说明第 7 节。

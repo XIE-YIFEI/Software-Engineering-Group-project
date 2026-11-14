@@ -127,6 +127,17 @@ erDiagram
 | `corrections` | OCR 纠错样本池（带正确车牌的误报） | alert_id、sighting_id、ocr_compact、corrected_compact、crop_path、created_by、created_at |
 | `evidence_exports` | 每次导出的证据包 | alert_id、user_id、format（html / pdf）、path、file_sha256、image_hashes（JSON：文件名 -> SHA-256）、at |
 
+### 3.8 SECS Copilot（AI 助手）
+
+| 表 | 用途 | 主要字段 |
+|---|---|---|
+| `copilot_conversations` | 某个用户的一次会话 | user_id、title、model、prompt_hash（工具 + 系统提示词：一变就开新会话）、created_at、updated_at |
+| `copilot_messages` | API 对话记录，下一个问题时原样重放 | conversation_id、seq、role（user / assistant / system）、content（JSON 内容块，含思考块）、display（JSON：展示给用户的回答：文本、工具步骤、引用、卡片、数字核对、费用） |
+| `copilot_actions` | 操作卡片：准备好的修改，确认后才写入（助手只读期间没有） | conversation_id、user_id、kind（visitor_pass / list_entry / alert_status / reveal）、params（JSON）、status（pending / confirmed / cancelled / failed / expired）、result、created_at、expires_at（30 分钟）、decided_at |
+| `copilot_documents` | “AI 解读”文字、案件摘要、每日回顾 | kind、alert_id、user_id、lang、params、facts（JSON：撰写所依据的系统数字）、text、model（没有模型时为 `offline-template`）、number_check（JSON）、created_at |
+| `copilot_vlm` | 可选的图像检查（供人决定的建议） | kind（second_reading / appearance）、sighting_id、alert_id、user_id、model、image_sha256（不保存图像本身）、result（JSON）、status（proposed / confirmed / rejected）、decided_by、decided_at |
+| `copilot_usage` | 每次模型调用一行：token 和费用，不含问题原文 | at、user_id、conversation_id、message_id（关联同一个问题的各次调用）、feature、model、输入 / 输出 / 缓存读取 / 缓存写入 token、cost_usd、stop_reason、request_id |
+
 ## 4. 自然键（为什么重复导入是安全的）
 
 | 数据行 | 自然键 |
@@ -164,6 +175,8 @@ erDiagram
 | 纠错样本池 | 早于 `retention_corrections_days` | 30 天 |
 | 审计日志 | 早于 `retention_audit_days` | 365 天 |
 | 查看授权、会话 | 已过期 | — |
+| 助手会话、已结束的操作卡片、每日回顾、图像检查结果 | 早于 `copilot_retention_days`（案件摘要和解读随其告警一起删除） | 30 天 |
+| 助手用量记录（只有 token 和费用） | 早于 `retention_audit_days` | 365 天 |
 
 “Preview”只统计将会删除的数量（试运行），不删除；“Purge now”执行删除并写一条 `purge` 审计记录。不再出现在任何识别记录里的
 车牌同时从 `plates` 中删除。

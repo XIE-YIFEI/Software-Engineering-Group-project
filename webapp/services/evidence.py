@@ -160,7 +160,16 @@ def build(conn: sqlite3.Connection, user: User, alert_id: int) -> dict:
                   "rule": tl.rule}
     with open(ROOT / "alpr" / "config.yaml", encoding="utf-8") as f:
         common = (yaml.safe_load(f) or {}).get("common", {})
+    from ..copilot.documents import latest                     # the officer's latest AI case summary, if any
+    ai = latest(conn, "case_summary", alert_id)
+    if ai:
+        ai["lines"] = [("h", ln.lstrip("#").strip()) if ln.lstrip().startswith("#") else
+                       ("li", ln.strip()[2:]) if ln.strip().startswith(("- ", "* ")) else ("p", ln.strip())
+                       for ln in ai["text"].splitlines() if ln.strip()]
+        ai["author"] = db.scalar(conn, "SELECT u.username FROM copilot_documents d LEFT JOIN users u ON u.id = d.user_id "
+                                       "WHERE d.id = ?", (ai["id"],)) or "-"
     return {
+        "ai_summary": ai,
         "mark": MARK, "disclaimer": DISCLAIMER, "hash_note": HASH_NOTE,
         "alert": detail.model_dump(), "provenance_label": provenance_label(a["provenance"]) or "Camera observation",
         "sighting": s, "lane_event": ev, "run": run,
@@ -317,6 +326,22 @@ def render_pdf(pack: dict) -> bytes:
             p(L["note"], 9, (90, 90, 98))
         p(f"Checked on {L['checked']} against: " + "; ".join(f"{s['title']}, {s['url']}" for s in L["sources"])
           + f". {L['source_note']} Penalties are not quoted (amended since).", 8, (90, 90, 98))
+    ai = pack.get("ai_summary")
+    if ai:
+        h(("AI-generated" if ai["ai"] else "Template") + " case summary (draft, not checked by a person)")
+        check = ("every number was found in the system's records" if ai["check"].get("ok") else
+                 f"{len(ai['check'].get('unmatched', []))} number(s) not found in the records: "
+                 + ", ".join(u["text"] for u in ai["check"].get("unmatched", [])))
+        p(f"{ai['label']} · {ai['model']} · written {ai['created_at'][:16].replace('T', ' ')} for {ai['author']} · number "
+          f"check: {check}. It summarises the records above; it is not a finding that an offence happened.", 8.5,
+          (90, 90, 98))
+        for kind, text in ai["lines"]:
+            if kind == "h":
+                pdf.set_font(F, "B", 10.5)
+                pdf.set_text_color(20, 20, 24)
+                pdf.multi_cell(W, 6, t(text), new_x="LMARGIN", new_y="NEXT")
+            else:
+                p(("· " if kind == "li" else "") + text.replace("**", ""))
     h("Processing")
     pr = pack["processing"]
     table([["Item", "Value"], ["Software", pr["software"]], ["Run", pr["run"]], ["Profile", pr["profile"] or "-"],
