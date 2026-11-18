@@ -112,9 +112,34 @@
         detail.append(k2, el("p", { class: "faint", style: { fontSize: "12px" }, text: r.simulated ? "SIMULATED record (fictitious vehicle)." : "Neutral placeholder for a real plate of the demo footage: no dates, no type." }));
       } else detail.append(el("p", { class: "muted", text: d.registry_note }));
       detail.append(el("div", { class: "row", style: { marginTop: "10px" } }, el("a", { class: "btn small", href: `/timeline/${encodeURIComponent(d.plate)}` }, "Timeline across cameras ›")));
+      if (d.status === "TENTATIVE" && d.crop_url && vlmOn) detail.append(secondReading(d));
     }
     if (d.scene_url) detail.append(el("h3", { style: { marginTop: "14px" }, text: "Scene frame" }),
       el("a", { href: d.scene_url, target: "_blank", rel: "noopener" }, el("img", { src: d.scene_url, alt: "scene frame", style: { width: "100%", borderRadius: "8px", border: "1px solid var(--line)" } })));
+  }
+
+  /* Optional image check (off by default, police): the AI service proposes a reading of a provisional plate and says
+     why it is hard; the officer confirms it (it goes to the OCR correction pool) or rejects it. */
+  let vlmOn = false;
+  if (S.user.role === "police") get("/api/v1/copilot/status").then((s) => { vlmOn = !!s.vlm_enabled; }).catch(() => {});
+  function secondReading(d) {
+    const box = el("div", { class: "cp-explain" });
+    box.append(el("button", { class: "btn small", onclick: async () => {
+      const v = await App.formDialog("Second reading (image AI)", [{ name: "ok", label: "Type SEND to send the plate crop to the AI service", required: true }], "Send",
+        "This sends the plate crop of a real vehicle to a third-party AI service (Anthropic). It is recorded in the audit log with the image's SHA-256; the copilot does not store the image. The result is only a proposal.");
+      if (!v || v.ok.trim().toUpperCase() !== "SEND") return;
+      let r;
+      try { r = await App.post(`/api/v1/copilot/vlm/second-reading/${d.id}`); } catch (e) { return fail(e); }
+      const res = r.result, input = el("input", { value: res.reading || "", style: { width: "140px" } });
+      clear(box).append(el("div", { class: "row between" }, el("h3", { style: { margin: 0 }, text: "Second reading (image AI)" }), pill("AI proposal: confirm or reject", "blue", false)),
+        el("dl", { class: "kv" }, el("dt", { text: "OCR (provisional)" }), el("dd", { text: res.ocr_reading }), el("dt", { text: "AI proposal" }), el("dd", { text: `${res.reading || "unreadable"} (${res.confidence})` }),
+          el("dt", { text: "Uncertain" }), el("dd", { text: res.uncertain_characters || "-" }), el("dt", { text: "Why it is hard" }), el("dd", { text: res.why_hard || "-" })),
+        el("div", { class: "row" }, el("span", { class: "muted", text: "Confirmed reading:" }), input,
+          el("button", { class: "btn small primary", onclick: async () => { try { await App.post(`/api/v1/copilot/vlm/${r.id}/decide`, { accept: true, reading: input.value }); toast("Confirmed: added to the OCR correction pool"); } catch (e) { fail(e); } } }, "Confirm"),
+          el("button", { class: "btn small", onclick: async () => { try { await App.post(`/api/v1/copilot/vlm/${r.id}/decide`, { accept: false }); toast("Rejected"); } catch (e) { fail(e); } } }, "Reject")),
+        el("p", { class: "faint", style: { fontSize: "11px" }, text: `${r.model} · sent image SHA-256 ${r.image_sha256.slice(0, 16)}…` }));
+    } }, "✦ Second reading (image AI)"));
+    return box;
   }
 
   form.addEventListener("submit", (ev) => { ev.preventDefault(); search(1); });

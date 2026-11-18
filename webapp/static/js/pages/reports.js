@@ -25,4 +25,34 @@
   });
   $("#csv").addEventListener("click", () => { const [span, p] = params(); download(`/api/v1/reports/${span}` + query({ ...p, format: "csv" })); });
   $("#pdf").addEventListener("click", () => { const [span, p] = params(); window.open(`/api/v1/reports/${span}` + query({ ...p, format: "pdf" }), "_blank"); });
+
+  // ---------------------------------------------------------------- the daily review (SECS Copilot)
+  const rf = $("#rf");
+  if (!rf) return;
+  for (const [k, v] of Object.entries(Copilot.LANGS)) rf.lang.append(el("option", { value: k, text: v, selected: k === Copilot.lang() }));
+  get("/api/v1/overview").then((o) => { for (const d of [o.date, ...o.dates.filter((x) => x !== o.date)]) rf.date.append(el("option", { value: d, text: d })); }).catch(fail);
+  get("/api/v1/forecast/days").then((ds) => { for (const d of ds.filter((x) => x.calibrated && x.first_warning)) rf.congestion_day.append(el("option", { value: d.code, text: d.label })); }).catch(fail);
+  function show(d, text) {
+    clear($("#reviewlabel")).append(d.ai ? App.pill("AI-generated", "blue", false) : App.pill(d.label, "orange", false));
+    const out = clear($("#rout"));
+    out.append(el("div", { class: "cp-text" }, Copilot.md(text, {})));
+    if (d.note) out.append(el("div", { class: "notice warn", text: d.note }));
+    out.append(Copilot.checkView(d.check, d.ai), el("p", { class: "faint", style: { fontSize: "12px" }, text: `${d.model} · ${App.dt(d.created_at)} · flows ${d.params.date} · congestion ${d.params.congestion_day || "-"}` }));
+    const a = $("#rpdf"); a.href = `/api/v1/copilot/documents/${d.id}.pdf`; a.hidden = false;
+  }
+  get("/api/v1/copilot/reviews/daily/latest").then((d) => { if (d) show(d, d.text); }).catch(() => {});
+  rf.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const body = Object.fromEntries(new FormData(rf).entries());
+    Copilot.setLang(body.lang);
+    const out = clear($("#rout")).appendChild(el("div", { class: "cp-text muted", text: "Computing the figures…" }));
+    let buf = "";
+    try {
+      await Copilot.stream("/api/v1/copilot/reviews/daily", body, (k, d) => {
+        if (k === "text") { buf += d; clear(out).append(Copilot.md(buf, {})); }
+        else if (k === "done") show(d, d.text);
+        else if (k === "error") $("#rout").append(el("div", { class: "notice warn", text: d.message }));
+      });
+    } catch (e) { fail(e); }
+  });
 })();

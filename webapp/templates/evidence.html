@@ -100,6 +100,17 @@
     {{ p.legal.source_note }} Penalties are not quoted: they have been amended since.</p>
   {% endif %}
 
+  {% if p.ai_summary %}
+  {% set a = p.ai_summary %}
+  <h2>{{ "AI-generated" if a.ai else "Template" }} case summary (draft, not checked by a person)</h2>
+  <p class="small">{{ a.label }} · {{ a.model }} · written {{ a.created_at[:16] | replace("T", " ") }} for {{ a.author }} ·
+    number check: {% if a.check.ok %}<span class="ok">every number was found in the system's records</span>{% else %}<span class="no">{{ a.check.unmatched | length }} number(s) not found in the records: {% for u in a.check.unmatched %}{{ u.text }}{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}.
+    It summarises the records above; it is not a finding that an offence happened.</p>
+  <div style="border-left: 3px solid var(--line); padding-left: 12px">
+    {% for kind, text in a.lines %}{% if kind == "h" %}<h3 style="font-size:14px;margin:12px 0 4px">{{ text }}</h3>{% elif kind == "li" %}<div>• {{ text }}</div>{% else %}<p style="margin:4px 0">{{ text }}</p>{% endif %}{% endfor %}
+  </div>
+  {% endif %}
+
   <h2>Processing</h2>
   <table>
     <tr><th>Software</th><td>{{ p.processing.software }}</td></tr>

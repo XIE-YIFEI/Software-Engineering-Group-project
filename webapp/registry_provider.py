@@ -24,6 +24,9 @@ class RegistryProvider(Protocol):
         """Sightings of the plate known to the registry side (other operators' cameras): seen_at, location, lat, lon."""
 
 
+_OPEN_LOCK = threading.Lock()
+
+
 class SimulatedRegistry:
     """alpr.registry.Registry (SQLite) behind the provider interface. Built on first use when missing. One
     connection per thread: sqlite3 connections of alpr.registry may only be used by the thread that opened them."""
@@ -40,7 +43,8 @@ class SimulatedRegistry:
         reg = getattr(self._local, "reg", None)
         if reg is None:
             from alpr.registry import Registry
-            reg = self._local.reg = Registry.open(str(self.path))
+            with _OPEN_LOCK:                      # the first open builds a missing registry: one thread at a time
+                reg = self._local.reg = Registry.open(str(self.path))
         return reg
 
     def lookup(self, compact: str) -> Optional[Dict]:

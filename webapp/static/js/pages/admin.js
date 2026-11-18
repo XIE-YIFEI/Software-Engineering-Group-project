@@ -78,7 +78,9 @@
     const form = $("#settings");
     let s;
     try { s = await get("/api/v1/settings"); } catch (e) { return fail(e); }
-    const LABEL = { retention_days: "Ordinary sightings kept (days)", retention_alert_days: "Sightings with alerts kept after closing (days)",
+    const LABEL = { copilot_retention_days: "Copilot conversations, actions and reviews kept (days)",
+      copilot_questions_per_hour: "Copilot: AI requests per user per hour", copilot_daily_budget_usd: "Copilot: daily budget for all users (USD)",
+      retention_days: "Ordinary sightings kept (days)", retention_alert_days: "Sightings with alerts kept after closing (days)",
       retention_access_days: "Access log kept (days)", retention_corrections_days: "OCR correction pool kept (days)", retention_audit_days: "Audit log kept (days)",
       overstay_hours: "Visitor overstay after (hours)", reveal_minutes: "A 'Show full plate' lasts (minutes)", session_hours: "A login lasts (hours)",
       default_pass_hours: "Default visitor pass (hours)", max_speed_kmh: "Impossible travel above (km/h)" };
@@ -89,6 +91,37 @@
       const body = Object.fromEntries([...new FormData(form).entries()].map(([k, v]) => [k, +v]));
       try { await api("PUT", "/api/v1/settings", body); toast("Settings saved (audit-logged)"); } catch (e) { fail(e); }
     };
+    copilot();
+  }
+
+  /* SECS Copilot: model, effort, the optional image checks (off by default), status and cost. The API key is read
+     from the server's environment (ANTHROPIC_API_KEY) and never entered here. */
+  async function copilot() {
+    const box = $("#copilot");
+    let c;
+    try { c = await get("/api/v1/copilot/settings"); } catch (e) { return fail(e); }
+    const model = el("select", { name: "model" }, ...c.models.map((m) => el("option", { value: m.id, selected: m.id === c.model,
+      text: `${m.label} (${m.price_usd_per_mtok.input} / ${m.price_usd_per_mtok.output} USD per million tokens in / out)` })));
+    const effort = el("select", { name: "effort" }, ...c.efforts.map((e) => el("option", { value: e, text: e, selected: e === c.effort })));
+    const vlm = el("input", { type: "checkbox", checked: c.vlm_enabled });
+    const u = c.usage, q = u.cost_per_question;
+    clear(box).append(el("h2", { text: "SECS Copilot (AI assistant)" }),
+      el("p", { class: c.online ? "notice info" : "notice warn", text: c.online ? `Online · ${c.model_label} · effort ${c.effort}${c.fallbacks ? " · refused requests are re-run on a fallback model (server-side)" : ""}`
+        : `Offline: ${c.reason}. The panel answers the quick questions with templates.` }),
+      el("label", { class: "field", style: { marginBottom: "10px" } }, "Model (the default is Claude Opus 5.5; switching starts new conversations)", model),
+      el("label", { class: "field", style: { marginBottom: "10px" } }, "Effort (more thinking costs more)", effort),
+      el("label", { class: "row", style: { gap: "8px", marginBottom: "6px" } }, vlm, el("b", { text: "Image checks (VLM): second reading of provisional plates, appearance check" })),
+      el("p", { class: "muted", style: { fontSize: "12px", marginTop: 0 }, text: "Off by default. When on, police officers can send plate crops and vehicle images of REAL vehicles to a third-party AI service (Anthropic), one image per click, each recorded in the audit log with its SHA-256. Following the data-minimisation principle of Malaysia's PDPA 2010, switch it on only for local demos." }),
+      el("button", { class: "btn primary", onclick: async () => {
+        if (vlm.checked && !c.vlm_enabled && !confirm("Switch on the image checks? Camera images of real vehicles will be sent to a third-party AI service when an officer asks for a check.")) return;
+        try { await api("PUT", "/api/v1/copilot/settings", { model: model.value, effort: effort.value, vlm_enabled: vlm.checked }); toast("Copilot settings saved (audit-logged)"); copilot(); } catch (e) { fail(e); }
+      } }, "Save copilot settings"),
+      el("h3", { style: { marginTop: "16px" }, text: `Usage, last ${u.days} days: ${u.total_usd} USD · today ${c.spent_today_usd} of ${c.daily_budget_usd} USD` }),
+      el("p", { class: "muted", style: { fontSize: "12px" }, text: `${u.questions} chat questions; cost per question: mean ${q.mean ?? "–"}, median ${q.median ?? "–"}, max ${q.max ?? "–"} USD.` }),
+      u.features.length ? table(["Feature", "Model", "Calls", "Input tokens", "Cache read", "Cache write", "Output tokens", "USD"], u.features.map((f) => el("tr", {},
+        el("td", { text: f.feature }), el("td", { text: f.model }), el("td", { class: "num", text: f.calls }), el("td", { class: "num", text: f.input_tokens }),
+        el("td", { class: "num", text: f.cache_read_tokens }), el("td", { class: "num", text: f.cache_write_tokens }), el("td", { class: "num", text: f.output_tokens }), el("td", { class: "num", text: f.cost_usd }))))
+        : el("div", { class: "empty", text: "No model calls yet." }));
   }
   ({ users, data, privacy, settings })[page]();
 })();

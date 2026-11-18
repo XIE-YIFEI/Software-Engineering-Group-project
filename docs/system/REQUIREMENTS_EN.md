@@ -16,7 +16,8 @@ upload & analyse; lists; privacy and audit; reports; and the six agreed addition
 click-to-timestamp playback, guardhouse mode, visitor passes and overstays, cross-camera timeline, evidence pack) plus
 the what-if "open more lanes" scenario.
 **Designed for, not built now:** live RTSP cameras, drawing lanes in the browser, a public congestion-outlook page
-without plates, push notifications, and the generative / agentic AI assistant (the next task).
+without plates, push notifications. **Built next:** the generative / agentic AI assistant, SECS Copilot (FR-24 to
+FR-32; [COPILOT_EN.md](COPILOT_EN.md)).
 
 ## 2. Users and the value they get
 
@@ -93,6 +94,15 @@ noted; `alpr/tests/test_alpr.py` for the pipeline).
 | FR-21 | Importer | loads every committed result; idempotent (keeps alert workflow states); SHA-256 of every source; reproduces the committed forecast | `test_importer_*` (3 tests) |
 | FR-22 | Documented API, reusable service functions | OpenAPI at `/docs`; typed service functions (for the AI assistant) | `test_api_documentation_lists_the_service_endpoints` |
 | FR-23 | Opt-in evidence output of the pipeline | `--evidence DIR` saves each logged plate's best crop and its frame and adds their paths; every existing JSON field unchanged | `test_evidence_output_saves_crop_and_frame_and_changes_no_other_field` (alpr) + re-runs of the four demo profiles (test report) |
+| FR-24 | AI assistant answers only through tools, with the user's permissions | each role is offered only its tools; other tools are refused; the service layer scopes, masks and audits every call (`via: assistant`) | `test_tool_schemas_are_valid_and_offered_per_role`, `test_tools_inherit_permissions_masking_and_audit` (copilot) |
+| FR-25 | Streamed answers in the question's language, with tool steps and citation chips | events `meta` / `step` / `cite` / `text` / `done`; every cited ref was returned by a tool; the transcript is append-only and replayed verbatim | `test_chat_streams_tool_steps_citations_and_stores_an_append_only_transcript`, `test_copilot_api_pages_and_streamed_chat` |
+| FR-26 | The AI assistant is read-only this semester (plan Rev2): the four AI actions are refused, even if the user would confirm | the `prepare_*` tools are offered to no role and refused if called; the server refuses to prepare or confirm a card (403), also one prepared earlier; no business record changes and no plate is unmasked; the pages keep these operations for the roles allowed them. The card code stays dormant for the spring plan (only the owner confirms, CSRF, expiry, notes and reasons by the user) | `test_copilot_is_read_only_the_four_actions_are_refused_and_nothing_changes`; dormant code, switched on in its tests: `test_visitor_pass_card_writes_nothing_until_the_guard_confirms`, `test_alert_and_reveal_cards_need_the_users_note_and_reason` |
+| FR-27 | Number check of every generated text | every number, time, date and plate found in the tool results; the rest flagged | `test_number_check_flags_invented_numbers_and_accepts_rounding` |
+| FR-28 | "AI explain" of an alert | stored values and derived numbers; SOP steps quoted from `sop.yaml`; legal sections only from `legal.yaml`; no conclusion that an offence happened | `test_sop_file_is_complete_bilingual_and_marked_as_a_draft_until_reviewed`, `test_explain_alert_uses_the_stored_values_the_sop_and_only_verified_legal_sections` |
+| FR-29 | Generated documents | case summary added to the evidence pack; daily traffic and congestion review; labelled AI-generated; number-checked; PDF | `test_case_summary_is_added_to_the_evidence_pack_and_marked`, `test_daily_review_facts_template_number_check_and_pdf` |
+| FR-30 | Optional image checks, off by default | administrator switch (audited); police only; SHA-256 of each image sent in the audit log; neutral wording | `test_image_checks_are_off_by_default_police_only_audited_and_neutral` |
+| FR-31 | Offline mode | without a key or network: quick questions answered by tools and templates, labelled "Offline: templates, not AI" | `test_offline_mode_answers_quick_questions_with_labelled_templates` |
+| FR-32 | Limits, cost logging, robustness | per-user rate limit, daily budget, token and step limits; cost per call from `usage`; refusals and failures never corrupt the transcript | `test_rate_limit_cost_logging_and_prices`, `test_refusals_and_failures_never_corrupt_the_transcript`, `test_the_anthropic_sdk_request_and_stream_parsing` |
 
 ## 6. Non-functional requirements
 

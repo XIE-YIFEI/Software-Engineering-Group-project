@@ -20,7 +20,8 @@ numpy>=1.26.0,<2            # torch 2.3 wheels are built against numpy 1.x: with
 PyYAML>=6.0                 # config.yaml + dataset data.yaml
 requests>=2.31.0            # Ollama HTTP API (local VLM)
 matplotlib>=3.7.0           # PR-curve plots for threshold tuning (tune.py, Track B)
-anthropic>=0.40.0           # optional --api path (Claude vision); only needed with --api
+anthropic>=1.17              # SECS Copilot (webapp/copilot, Claude API) and the optional --api path
+httpx2>=2.16                # anthropic's HTTP library (its MockTransport serves the copilot tests)
 
 # -- Malaysian ALPR (alpr/, run_image.py, run_alpr.py) -----------------------------
 fast-plate-ocr>=1.1.0       # plate-specific OCR (default backend; model auto-downloads on first use)

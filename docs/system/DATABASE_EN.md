@@ -130,6 +130,17 @@ All alerts are created by one function, `webapp/alerting.py: create_alert` (the 
 | `corrections` | OCR correction pool (false alarms with the correct plate) | alert_id, sighting_id, ocr_compact, corrected_compact, crop_path, created_by, created_at |
 | `evidence_exports` | every evidence pack exported | alert_id, user_id, format (html / pdf), path, file_sha256, image_hashes (JSON name -> SHA-256), at |
 
+### 3.8 SECS Copilot (the AI assistant)
+
+| Table | Purpose | Main columns |
+|---|---|---|
+| `copilot_conversations` | one conversation of one user | user_id, title, model, prompt_hash (tools + system prompt: a change starts a new conversation), created_at, updated_at |
+| `copilot_messages` | the API transcript, replayed verbatim on the next question | conversation_id, seq, role (user / assistant / system), content (JSON content blocks, thinking blocks included), display (JSON: the answer as shown: text, tool steps, citations, cards, number check, cost) |
+| `copilot_actions` | action cards: prepared changes, written only on Confirm (none while the copilot is read-only) | conversation_id, user_id, kind (visitor_pass / list_entry / alert_status / reveal), params (JSON), status (pending / confirmed / cancelled / failed / expired), result, created_at, expires_at (30 min), decided_at |
+| `copilot_documents` | "AI explain" texts, case summaries, daily reviews | kind, alert_id, user_id, lang, params, facts (JSON: the system's figures it was written from), text, model (`offline-template` without a model), number_check (JSON), created_at |
+| `copilot_vlm` | optional image checks (proposals for a person) | kind (second_reading / appearance), sighting_id, alert_id, user_id, model, image_sha256 (the image itself is not stored), result (JSON), status (proposed / confirmed / rejected), decided_by, decided_at |
+| `copilot_usage` | one row per model call: tokens and cost, no question text | at, user_id, conversation_id, message_id (links the calls of one question), feature, model, input / output / cache-read / cache-write tokens, cost_usd, stop_reason, request_id |
+
 ## 4. Natural keys (why re-importing is safe)
 
 | Rows | Natural key |
@@ -170,6 +181,8 @@ scene paths of sightings). Rows whose natural key is no longer in the results fi
 | correction pool | older than `retention_corrections_days` | 30 days |
 | audit log | older than `retention_audit_days` | 365 days |
 | reveals, sessions | expired | — |
+| assistant conversations, finished action cards, daily reviews, image-check results | older than `copilot_retention_days` (case summaries and explanations go with their alert) | 30 days |
+| assistant usage rows (tokens and cost only) | older than `retention_audit_days` | 365 days |
 
 "Preview" counts what would go (dry run) without deleting; "Purge now" deletes and writes a `purge` audit row.
 Plates no longer seen in any sighting are removed from `plates` at the same time.

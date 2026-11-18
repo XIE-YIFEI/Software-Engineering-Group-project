@@ -82,6 +82,17 @@
     if (police && a.plate && !a.masked) actions.append(el("a", { class: "btn", href: `/timeline/${encodeURIComponent(a.plate)}` }, "Timeline ›"));
     if (!police && !guard) actions.append(el("span", { class: "muted", text: "Read-only for your role." }));
     d.append(actions);
+    const ai = el("div", { class: "row", style: { marginTop: "8px" } },
+      el("button", { class: "btn", title: "How this alert was computed, the SOP steps and the legal references", onclick: () => explainAlert(a) }, "✦ AI explain · AI 解读"));
+    if (police) ai.append(el("button", { class: "btn", title: "Write a case summary for the evidence pack", onclick: () => caseSummary(a) }, "✦ AI case summary"));
+    if (police && cp && cp.vlm_enabled && ["TYPE_MISMATCH", "DUPLICATE"].includes(a.code))
+      ai.append(el("button", { class: "btn", title: "Optional image check: sends the vehicle image to the AI service", onclick: () => appearance(a) }, "✦ Appearance check (image AI)"));
+    const aiBox = el("div", { id: "aibox" });
+    d.append(ai, aiBox);
+    if (police) get(`/api/v1/copilot/alerts/${a.id}/case-summary`).then((s) => {
+      if (s && current === a.id) aiBox.prepend(el("p", { class: "muted", style: { fontSize: "12px", marginTop: "8px" },
+        text: `${s.ai ? "AI" : "Template"} case summary added to the evidence pack on ${dt(s.created_at)} · number check ${s.check.ok ? "OK" : "flagged"}.` }));
+    }).catch(() => {});
     d.append(el("h3", { style: { marginTop: "16px" }, text: "History" }),
       ...a.history.map((h) => el("div", { class: "row", style: { fontSize: "12px", padding: "3px 0", borderTop: "1px solid var(--line)" } },
         el("span", { class: "faint num", text: dt(h.at) }), el("b", { text: h.action.replace("_", " ") }), el("span", { class: "muted", text: h.user }),
@@ -98,6 +109,86 @@
       body = { ...body, ...v };
     }
     try { await post(`/api/v1/alerts/${a.id}/transition`, body); toast("Saved"); await load(); await select(a.id); } catch (e) { fail(e); }
+  }
+
+  // ---------------------------------------------------------------- SECS Copilot on an alert
+  let cp = null;
+  get("/api/v1/copilot/status").then((s) => { cp = s; }).catch(() => {});
+
+  function langPicker(onchange) {
+    const sel = el("select", { class: "small" }, ...Object.entries(Copilot.LANGS).map(([k, v]) => el("option", { value: k, text: v, selected: k === Copilot.lang() })));
+    sel.addEventListener("change", () => { Copilot.setLang(sel.value); onchange(); });
+    return sel;
+  }
+
+  /* "AI explain": the facts (stored values, derived numbers, caveats) come from the system; the model only writes
+     them up; the SOP steps and the legal references are shown verbatim from sop.yaml and legal.yaml. */
+  async function explainAlert(a) {
+    const box = clear($("#aibox"));
+    const lg = Copilot.lang();
+    const facts = el("div"), text = el("div", { class: "cp-text" }), extra = el("div", { class: "stack", style: { gap: "8px" } });
+    const label = el("span");
+    box.append(el("div", { class: "cp-explain" }, el("div", { class: "row between" }, el("h3", { style: { margin: 0 }, text: "AI explain · AI 解读" }),
+      el("div", { class: "row", style: { gap: "6px" } }, label, langPicker(() => explainAlert(a)))), facts, text, extra));
+    let buf = "";
+    try {
+      await Copilot.stream(`/api/v1/copilot/alerts/${a.id}/explain`, { lang: lg }, (ev, d) => {
+        if (ev === "facts") {
+          const L = lg === "zh" ? "zh" : "en";
+          const tb = el("tbody", {}, ...d.values.map((v) => el("tr", {}, el("td", { class: "muted", text: v.label[L] }), el("td", { text: String(v.value) }), el("td", { class: "faint", style: { fontSize: "11px" }, text: v.source }))),
+            ...Object.entries(d.derived).filter(([, v]) => !Array.isArray(v)).map(([k, v]) => el("tr", {}, el("td", { class: "muted", text: (d.derived_labels[k] || {})[L] || k }), el("td", { text: String(v) }), el("td", { class: "faint", style: { fontSize: "11px" }, text: "derived by the system" }))));
+          facts.append(el("table", { class: "t", style: { margin: "8px 0" } }, tb));
+        } else if (ev === "text") { buf += d; clear(text).append(Copilot.md(buf, {})); }
+        else if (ev === "done") {
+          clear(label).append(d.ai ? pill("AI-generated", "blue", false) : pill(d.label, "orange", false));
+          if (d.note) extra.append(el("div", { class: "notice warn", text: d.note }));
+          extra.append(Copilot.checkView(d.check, d.ai), Copilot.sopView(d.sop, d.legal, d.alert.title, lg === "zh" ? "zh" : "en"));
+        } else if (ev === "error") extra.append(el("div", { class: "notice warn", text: d.message }));
+      });
+    } catch (e) { fail(e); }
+  }
+
+  async function caseSummary(a) {
+    const box = clear($("#aibox"));
+    const text = el("div", { class: "cp-text" }), extra = el("div", { class: "stack", style: { gap: "8px" } }), label = el("span");
+    box.append(el("div", { class: "cp-explain" }, el("div", { class: "row between" }, el("h3", { style: { margin: 0 }, text: "AI case summary (for the evidence pack)" }),
+      el("div", { class: "row", style: { gap: "6px" } }, label, langPicker(() => caseSummary(a)))), text, extra));
+    let buf = "";
+    try {
+      await Copilot.stream(`/api/v1/copilot/alerts/${a.id}/case-summary`, { lang: Copilot.lang() }, (ev, d) => {
+        if (ev === "text") { buf += d; clear(text).append(Copilot.md(buf, {})); }
+        else if (ev === "done") {
+          clear(label).append(d.ai ? pill("AI-generated", "blue", false) : pill(d.label, "orange", false));
+          if (d.note) extra.append(el("div", { class: "notice warn", text: d.note }));
+          extra.append(Copilot.checkView(d.check, d.ai), el("div", { class: "row" }, el("span", { class: "muted", text: "Added to the evidence pack:" }),
+            el("a", { class: "btn small", href: `/api/v1/alerts/${a.id}/evidence?format=html`, target: "_blank", rel: "noopener" }, "HTML"),
+            el("a", { class: "btn small", href: `/api/v1/alerts/${a.id}/evidence?format=pdf`, target: "_blank", rel: "noopener" }, "PDF")));
+        } else if (ev === "error") extra.append(el("div", { class: "notice warn", text: d.message }));
+      });
+    } catch (e) { fail(e); }
+  }
+
+  /* Optional image check (off by default): the vehicle crop goes to the AI service; the system compares its
+     description with the SIMULATED registry record. An observation for a person to verify, never a conclusion. */
+  async function appearance(a) {
+    const v = await formDialog("Appearance check (image AI)", [{ name: "ok", label: "Type SEND to send the vehicle image to the AI service", required: true }], "Send",
+      "This sends a camera image of a real vehicle to a third-party AI service (Anthropic). It is recorded in the audit log with the image's SHA-256; the image is not stored by the copilot.");
+    if (!v || v.ok.trim().toUpperCase() !== "SEND") return;
+    const box = clear($("#aibox"));
+    box.append(el("div", { class: "cp-explain muted", text: "Asking the AI service…" }));
+    let r;
+    try { r = await post(`/api/v1/copilot/vlm/appearance/${a.id}`); } catch (e) { clear(box); return fail(e); }
+    const zh = Copilot.lang() === "zh";
+    const res = r.result;
+    clear(box).append(el("div", { class: "cp-explain stack", style: { gap: "8px" } },
+      el("div", { class: "row between" }, el("h3", { style: { margin: 0 }, text: "Appearance check (image AI)" }), pill("AI observation", "blue", false)),
+      el("p", { class: res.verdict === "differs" ? "notice warn" : "notice info", text: res.note[zh ? "zh" : "en"] }),
+      el("table", { class: "t" }, el("thead", {}, el("tr", {}, ...["", "Registered (SIMULATED)", "Seen by the AI", ""].map((h) => el("th", { text: h })))),
+        el("tbody", {}, ...res.comparison.map((c) => el("tr", {}, el("td", { class: "muted", text: c.field }), el("td", { text: c.registered }), el("td", { text: c.observed }),
+          el("td", {}, c.match === null ? null : pill(c.match ? "fits" : "differs", c.match ? "green" : "orange", false)))))),
+      el("p", { class: "faint", style: { fontSize: "12px" }, text: `${res.notes || ""} · confidence ${res.confidence} · ${r.model} · sent image SHA-256 ${r.image_sha256.slice(0, 16)}…` }),
+      el("div", { class: "row" }, el("button", { class: "btn small", onclick: async () => { await post(`/api/v1/copilot/vlm/${r.id}/decide`, { accept: true }); toast("Recorded as checked"); } }, "I checked it"),
+        el("button", { class: "btn small", onclick: async () => { await post(`/api/v1/copilot/vlm/${r.id}/decide`, { accept: false }); toast("Recorded as rejected"); } }, "Reject"))));
   }
 
   window.addEventListener("hashchange", () => { const id = +location.hash.slice(1); if (id && id !== current) select(id); });

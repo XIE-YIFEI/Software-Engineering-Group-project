@@ -453,3 +453,89 @@ CREATE TABLE IF NOT EXISTS evidence_exports (
     image_hashes TEXT NOT NULL,               -- JSON {name: sha256}
     at TEXT NOT NULL
 );
+
+-- SECS Copilot (webapp/copilot): the AI assistant's conversations, the write actions it prepares (nothing is written
+-- until the user confirms), generated documents, optional VLM checks and the cost of every model call. Conversation
+-- contents can name plates, so they follow their own retention period (setting copilot_retention_days).
+CREATE TABLE IF NOT EXISTS copilot_conversations (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL,                      -- the model it runs on ('offline' = template answers only)
+    prompt_hash TEXT NOT NULL,                -- SHA-256 of tools + system prompt: a changed prefix needs a new conversation
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS copilot_conv_user ON copilot_conversations (user_id, updated_at);
+
+CREATE TABLE IF NOT EXISTS copilot_messages (   -- the API transcript, replayed verbatim on the next question
+    id INTEGER PRIMARY KEY,
+    conversation_id INTEGER NOT NULL REFERENCES copilot_conversations(id) ON DELETE CASCADE,
+    seq INTEGER NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+    content TEXT NOT NULL,                    -- JSON: content blocks exactly as sent / received
+    display TEXT,                             -- JSON (assistant answers): text, tool steps, citations, cards, checks
+    created_at TEXT NOT NULL,
+    UNIQUE (conversation_id, seq)
+);
+
+CREATE TABLE IF NOT EXISTS copilot_actions (    -- prepared write operations ("action cards")
+    id INTEGER PRIMARY KEY,
+    conversation_id INTEGER REFERENCES copilot_conversations(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    kind TEXT NOT NULL,                       -- visitor_pass | list_entry | alert_status | reveal
+    params TEXT NOT NULL,                     -- JSON, as prepared (the user may edit fields before confirming)
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'cancelled', 'failed', 'expired')),
+    result TEXT,                              -- JSON: what the service function returned, or the error
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    decided_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS copilot_documents (  -- AI-generated (or template) case summaries and daily reviews
+    id INTEGER PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('case_summary', 'daily_review', 'alert_explanation')),
+    alert_id INTEGER REFERENCES alerts(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id),
+    lang TEXT NOT NULL DEFAULT 'en',
+    params TEXT NOT NULL DEFAULT '{}',        -- JSON: day, sections ...
+    facts TEXT NOT NULL,                      -- JSON: the system's numbers the text was written from
+    text TEXT NOT NULL,
+    model TEXT NOT NULL,                      -- 'offline-template' when no model wrote it
+    number_check TEXT NOT NULL,               -- JSON: numbers of the text not found in the facts
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS copilot_docs_alert ON copilot_documents (alert_id, kind);
+
+CREATE TABLE IF NOT EXISTS copilot_vlm (        -- optional image checks (off by default): proposals for a human
+    id INTEGER PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('second_reading', 'appearance')),
+    sighting_id INTEGER REFERENCES sightings(id) ON DELETE CASCADE,
+    alert_id INTEGER REFERENCES alerts(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id),
+    model TEXT NOT NULL,
+    image_sha256 TEXT NOT NULL,               -- JSON {name: sha256} of what was sent (the images are not stored)
+    result TEXT NOT NULL,                     -- JSON
+    status TEXT NOT NULL DEFAULT 'proposed' CHECK (status IN ('proposed', 'confirmed', 'rejected')),
+    decided_by INTEGER REFERENCES users(id),
+    decided_at TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS copilot_usage (      -- one row per model call: tokens and cost (no question text)
+    id INTEGER PRIMARY KEY,
+    at TEXT NOT NULL,
+    user_id INTEGER,
+    conversation_id INTEGER,
+    message_id INTEGER,
+    feature TEXT NOT NULL,                    -- chat | explain | case_summary | daily_review | second_reading | appearance
+    model TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+    cost_usd REAL NOT NULL DEFAULT 0,
+    stop_reason TEXT,
+    request_id TEXT
+);
+CREATE INDEX IF NOT EXISTS copilot_usage_at ON copilot_usage (at);

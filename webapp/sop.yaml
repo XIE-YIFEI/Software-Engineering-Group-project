@@ -1,0 +1,185 @@
+# Standard operating procedures (SOP) shown by the copilot's "AI explain" (webapp/copilot/sop.py).
+# The copilot QUOTES these steps; it never writes procedures of its own. One list of steps per alert code and role,
+# in English and Chinese (the same number of steps in both). `defaults` apply to a role when its code has no entry.
+#
+# Written for the course demo by the project team. They are generic good practice, NOT the standing orders of PDRM,
+# JPJ or any property manager: a real deployment replaces them with the operator's own procedures. Every step keeps
+# the alert a lead for a person to verify; none of them treats an alert as proof that an offence happened.
+#
+# Review: set status to "reviewed" and fill in reviewed_by / reviewed_on after reading every step. Until then the
+# panel labels the steps "draft, not yet reviewed".
+
+version: 1
+status: reviewed
+reviewed_by: "Zhang Hanwen"
+reviewed_on: "2026-11-08"
+
+sops:
+  BLACKLIST:
+    police:
+      en:
+        - "Check the plate crop and the scene frame: does the image show the plate the system read? OCR can misread characters."
+        - "Check in the system of record whether the stolen-vehicle report is real and still active (the demo registry is SIMULATED)."
+        - "Do not stop or approach the vehicle on the strength of this alert alone: inform the control room and follow your unit's standing orders for reported-stolen vehicles."
+        - "Write what you checked in the alert note. If the reading was wrong, mark the alert a false alarm and enter the correct plate."
+        - "Export an evidence pack only after a person has confirmed the reading and the report."
+      zh:
+        - "核对车牌截图和现场画面：图像中的车牌是否与系统读出的一致？OCR 可能读错字符。"
+        - "在权威系统中核实失窃报案是否真实且仍然有效（演示用的车辆登记库是模拟的）。"
+        - "不要仅凭这条告警拦车或接近车辆：通知指挥室，并按本单位处理被报失窃车辆的常规程序执行。"
+        - "在告警备注中写明核查了什么。如果是读错了车牌，把告警标为误报并填写正确车牌。"
+        - "只有在人工确认读取结果和报案之后，才导出证据包。"
+  DUPLICATE:
+    police:
+      en:
+        - "Open the cross-camera timeline and check both sightings: the times, the places and the travel speed they would need."
+        - "Compare the vehicles in the images (type, colour, make) with each other and with the registration record."
+        - "Rule out an OCR misread and a wrong camera clock before treating it as one plate on two vehicles."
+        - "Write the findings in the alert note. Escalate under your standing orders only after a person has confirmed that the plates match and the vehicles differ."
+      zh:
+        - "打开跨摄像头时间线，核对两次目击：时间、地点，以及两地之间需要的行驶速度。"
+        - "对比图像中的车辆（车型、颜色、品牌），既相互比较，也与登记记录比较。"
+        - "先排除 OCR 读错和摄像头时钟错误，再考虑同一车牌出现在两辆车上的可能。"
+        - "在告警备注中写明核查结果。只有在人工确认车牌一致、车辆不同之后，才按常规程序上报。"
+  EXPIRED:
+    police:
+      en:
+        - "Check the plate reading against the crop."
+        - "Check the current road-tax (motor vehicle licence) status in the system of record: the demo registry is SIMULATED and may be out of date."
+        - "Treat it as an administrative follow-up; do not stop a vehicle on the strength of this alert alone."
+        - "Write what you checked in the alert note."
+      zh:
+        - "对照截图核对车牌读取结果。"
+        - "在权威系统中查询当前的路税（机动车执照）状态：演示登记库是模拟的，可能已过时。"
+        - "按行政跟进处理；不要仅凭这条告警拦车。"
+        - "在告警备注中写明核查了什么。"
+  UNMATCHED:
+    police:
+      en:
+        - "Check the reading against the crop: an OCR misread is the most common cause."
+        - "Search for look-alike plates with OCR tolerance 1 or 2."
+        - "\"Not in the registry\" here means not in the SIMULATED registry; verify with the system of record before drawing any conclusion."
+        - "Write the result in the alert note; if the plate was misread, mark the alert a false alarm and enter the correct plate."
+      zh:
+        - "对照截图核对读取结果：最常见的原因是 OCR 读错。"
+        - "用 OCR 容错 1 或 2 搜索相似车牌。"
+        - "这里的“未登记”只表示不在模拟登记库中；得出任何结论之前，先在权威系统中核实。"
+        - "在告警备注中写明结果；如果是读错了车牌，把告警标为误报并填写正确车牌。"
+  ILLEGAL_FORMAT:
+    police:
+      en:
+        - "Check the crop: is it a misread, or does the plate itself not follow the legal format?"
+        - "If the plate itself is non-standard, record it for follow-up under the plate-display rules."
+        - "Write what you saw in the alert note."
+      zh:
+        - "查看截图：是读错了，还是车牌本身不符合法定格式？"
+        - "如果车牌本身不规范，按车牌展示规定记录下来以便跟进。"
+        - "在告警备注中写明看到的情况。"
+  TYPE_MISMATCH:
+    police:
+      en:
+        - "Check the image: what kind of vehicle carries the plate, compared with the registered body type?"
+        - "Remember that the detector's classes are coarse: SUVs, pickups and vans are often detected as trucks."
+        - "Verify the registration in the system of record (the demo registry is SIMULATED)."
+        - "Write the findings in the alert note; escalate only after a person has confirmed both the plate and the difference in vehicle type."
+      zh:
+        - "查看图像：挂这块车牌的是什么车，与登记的车身类型相比如何？"
+        - "注意检测器的类别很粗：SUV、皮卡和厢式车常被识别为卡车。"
+        - "在权威系统中核实登记信息（演示登记库是模拟的）。"
+        - "在告警备注中写明核查结果；只有在人工确认车牌和车型差异之后才上报。"
+  WATCHLIST:
+    police:
+      en:
+        - "Confirm the plate reading against the crop."
+        - "Read the watch-list entry: why it was added, and whether it is still needed."
+        - "Act only as the entry's instruction and your standing orders say; a watch-list hit is information, not a reason to stop a vehicle by itself."
+        - "Write what you did in the alert note."
+      zh:
+        - "对照截图确认车牌读取结果。"
+        - "查看关注名单条目：为什么加入，以及是否仍有必要。"
+        - "只按条目说明和常规程序行事；命中关注名单只是信息，本身不是拦车的理由。"
+        - "在告警备注中写明所做的处理。"
+  SPEEDING:
+    police:
+      en:
+        - "Check the measured speed with its error: the alert fires only when the lower end of the 95 % interval is above the limit."
+        - "Check which limit was used: in the demo it is an ASSUMED value, not the posted limit of that road."
+        - "The camera speed is not a measurement from an approved speed-enforcement device: use it as a lead for road-safety analysis, not as proof."
+        - "Write what you checked in the alert note."
+      zh:
+        - "核对测得的速度及其误差：只有当 95% 区间的下限高于限速时才会告警。"
+        - "核对所用的限速：演示中是假设值，不是该路段的标示限速。"
+        - "摄像头测速不是经认可的测速执法设备的测量结果：只能作为道路安全分析的线索，不能作为证据。"
+        - "在告警备注中写明核查了什么。"
+  TAILGATING:
+    police:
+      en:
+        - "Review the video at the event time."
+        - "The headway threshold is a system setting: the Act sets no fixed minimum headway, and whether the driving was careless is for a court to decide."
+        - "Use the event for road-safety analysis and education unless your unit decides otherwise."
+        - "Write what you saw in the alert note."
+      zh:
+        - "回看事件时间点的视频。"
+        - "车头时距阈值是系统设置：法令没有规定固定的最小车距，驾驶是否疏忽由法院判断。"
+        - "除非本单位另有决定，该事件用于道路安全分析和宣传教育。"
+        - "在告警备注中写明看到的情况。"
+  SOLID_LINE:
+    police:
+      en:
+        - "Review the video: did the vehicle cross the solid line or the hatched area?"
+        - "Lane mapping is less precise at the far end of the view; check the position in the image."
+        - "Write what you saw in the alert note."
+      zh:
+        - "回看视频：车辆是否越过了实线或斑马线区域？"
+        - "画面远端的车道映射精度较低；请在图像中核对位置。"
+        - "在告警备注中写明看到的情况。"
+  WRONG_WAY:
+    police:
+      en:
+        - "Treat it as an urgent hazard: look at the live view or the video at once."
+        - "If it is confirmed, inform the control room so that approaching drivers can be warned."
+        - "Write what you saw and did in the alert note."
+      zh:
+        - "按紧急危险处理：立即查看实时画面或视频。"
+        - "如果确认属实，通知指挥室，以便提醒来车驾驶人。"
+        - "在告警备注中写明看到的情况和采取的行动。"
+  STOPPED:
+    police:
+      en:
+        - "Look at the live view: breakdown, crash or an obstacle?"
+        - "Inform the control room or traffic operations so that help is sent and approaching drivers are warned."
+        - "Write what you saw and did in the alert note."
+      zh:
+        - "查看实时画面：是抛锚、事故还是障碍物？"
+        - "通知指挥室或交通运营部门，以便派出援助并提醒来车驾驶人。"
+        - "在告警备注中写明看到的情况和采取的行动。"
+  BANNED_AT_SITE:
+    guard:
+      en:
+        - "Keep the barrier closed and refuse entry politely; do not argue."
+        - "Record \"Stop & note\" with what happened."
+        - "If you are unsure about the ban (who added it, whether it still applies), ask the management office before letting the vehicle in."
+        - "If the driver becomes aggressive, call your security supervisor; in an emergency call the police (999)."
+      zh:
+        - "保持道闸关闭，礼貌地拒绝进入；不要争吵。"
+        - "用“拦下并备注”记录发生的情况。"
+        - "如果对禁入有疑问（谁添加的、是否仍然有效），在放行前先询问管理处。"
+        - "如果司机情绪激动，呼叫保安主管；紧急情况拨打警方电话（999）。"
+
+defaults:
+  guard:
+    en:
+      - "Check the plate reading against the image."
+      - "Inform the management office."
+      - "Record your decision in the access log."
+    zh:
+      - "对照图像核对车牌读取结果。"
+      - "通知管理处。"
+      - "在出入记录中记下你的决定。"
+  admin:
+    en:
+      - "Administrators do not handle alerts: the police officer or the site's guard does."
+      - "If the alert looks wrong (a data-quality problem), report it to the person who handles it, and check in the audit log who has handled it so far."
+    zh:
+      - "管理员不处理告警：由交警或该站点的保安处理。"
+      - "如果告警看起来有误（数据质量问题），告知负责处理的人，并在审计日志中查看至今由谁处理过。"

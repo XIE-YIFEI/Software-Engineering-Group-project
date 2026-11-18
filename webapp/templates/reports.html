@@ -9,5 +9,21 @@
   <span class="muted" style="font-size:12px">The demo footage uses the notional day 14 Oct 2026; the CIQ congestion data are from 21–22 Mar 2023.</span>
 </form>
 <section class="card" id="out"><div class="empty">Choose a report.</div></section>
+{% if user.role in ("traffic", "police", "admin") %}
+<section class="card" id="review" style="margin-top:14px">
+  <div class="row between"><h2 style="margin:0">Daily traffic and congestion review · AI</h2><span id="reviewlabel"></span></div>
+  <p class="muted" style="font-size:12px;margin:6px 0 10px">Flows by vehicle type, congestion start and end, the longest-queueing zone, forecast accuracy and
+    warning lead time, and suggestions for tomorrow (labelled as suggestions, with the what-if assumptions). The system computes
+    every figure first; the AI only writes them up, and the number check compares its text with those figures.</p>
+  <form id="rf" class="row" style="align-items:flex-end">
+    <label class="field">Flow day<select name="date"></select></label>
+    <label class="field">Congestion day<select name="congestion_day"></select></label>
+    <label class="field">Language<select name="lang"></select></label>
+    <button class="btn primary" type="submit">✦ Write the review</button>
+    <a class="btn" id="rpdf" hidden target="_blank" rel="noopener">PDF</a>
+  </form>
+  <div id="rout" style="margin-top:12px"></div>
+</section>
+{% endif %}
 {% endblock %}
 {% block scripts %}<script src="/static/js/pages/reports.js"></script>{% endblock %}

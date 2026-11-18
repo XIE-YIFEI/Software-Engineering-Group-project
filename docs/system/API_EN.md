@@ -124,6 +124,22 @@ Roles: **P** police · **G** guard · **T** traffic · **A** admin. "masked" = p
 | `GET /media/sightings/{id}/crop` | scoped | sharp for police, guards and revealed records; blurred on the server otherwise |
 | `GET /media/sightings/{id}/scene` | P, G, revealed records | full camera frame of the best crop; audit-logged |
 
+### SECS Copilot (AI assistant, [COPILOT_EN.md](COPILOT_EN.md))
+
+| Method and path | Roles | What it does |
+|---|---|---|
+| `GET /copilot/status` | all | online or offline (and why), model, effort, limits, this role's quick questions and tools |
+| `POST /copilot/chat` | all | body `{message, conversation_id, page}`; streams server-sent events: `meta`, `text`, `step`, `step_done`, `cite`, `card`, `offline`, `error`, `done` (the stored answer with its citations, cards, number check and cost) |
+| `POST /copilot/quick` | all (per role) | body `{id, lang}`: a quick question answered from tools and a template; works offline |
+| `GET /copilot/conversations` · `GET /copilot/conversations/{id}` · `DELETE /copilot/conversations/{id}` | the owner | the user's own conversations |
+| `POST /copilot/actions/{id}/confirm` · `POST /copilot/actions/{id}/cancel` | the owner of the card | **read-only this semester: confirm returns 403 and runs nothing** (cancel still works). When actions are switched back on: body `{fields}`: run the prepared change through the ordinary service function (audit `via: assistant`); a missing note or reason returns 422 and the card stays pending |
+| `POST /copilot/alerts/{id}/explain` | P G A | body `{lang}`; streams `facts`, `text`, `done`: "AI explain" with the SOP steps and the legal references |
+| `POST /copilot/alerts/{id}/case-summary` · `GET /copilot/alerts/{id}/case-summary` | P | write / read the case summary added to the alert's evidence pack |
+| `POST /copilot/reviews/daily` · `GET /copilot/reviews/daily/latest` | T (P A may read) | body `{date, congestion_day, lang}`; streams the daily traffic and congestion review |
+| `GET /copilot/documents/{id}.pdf` | P (case summary); T P A (review) | PDF of a generated document |
+| `POST /copilot/vlm/second-reading/{sighting_id}` · `POST /copilot/vlm/appearance/{alert_id}` · `POST /copilot/vlm/{id}/decide` | P, when the image checks are on | the optional image checks; decide `{accept, reading}` |
+| `GET /copilot/settings` · `PUT /copilot/settings` | A | model, effort, image checks (`{model, effort, vlm_enabled}`); status and usage |
+
 ## 3. Example (Python, against a running server)
 
 ```python
@@ -144,7 +160,7 @@ c.post(f"/api/v1/alerts/{alert['id']}/transition", json={"to": "acknowledged", "
 ## 4. Service functions (for the AI assistant)
 
 The API routers are thin wrappers: authenticate -> call a service function -> return its pydantic model. The service
-functions are typed, documented and take the logged-in `User`, so the next task's AI assistant can call them as tools
+functions are typed, documented and take the logged-in `User`, so the AI assistant (SECS Copilot) calls them as tools
 and inherit the same permissions, masking and audit (an assistant call is logged with `via: assistant`).
 
 | Module (`webapp/services/`) | Functions (all take `conn, user, …`) | Returns |
@@ -161,6 +177,7 @@ and inherit the same permissions, masking and audit (an assistant call is logged
 | `reports` | `build(kind, day, weekly)`, `to_csv(rep)`, `to_pdf(rep)` | dict, CSV text, PDF bytes |
 | `admin` | `users()`, `add_user(…)`, `update_user(…)`, `get_settings()`, `put_settings(values)`, `audit_log(…)`, `verify()`, `run_purge(dry_run)`, `corrections()`, `data_status()` | models / dicts |
 
-The models are in `webapp/models.py`; their JSON schemas are in `/openapi.json` (`components.schemas`), ready to be
-turned into tool definitions. Write actions (alert transitions, list changes, gate decisions) should stay behind a
-confirmation step in the assistant.
+The models are in `webapp/models.py`; their JSON schemas are in `/openapi.json` (`components.schemas`). SECS Copilot
+([COPILOT_EN.md](COPILOT_EN.md)) calls these functions as its tools, with the signed-in user, so it inherits the same
+permissions, masking and audit. This semester it is read-only: its four write actions (visitor passes, list entries,
+alert status changes, reveals) are switched off, and the action-card endpoints refuse to confirm (HTTP 403).
