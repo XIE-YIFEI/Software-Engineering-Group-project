@@ -201,6 +201,8 @@ class Worker:
                             video=Path(job["input_path"]) if Path(job["input_path"]).exists() else None,
                             video_kind="source", video_offset=0.0, job_id=job["id"],
                             note="Incomplete analysis; only saved records are available.")
+                    from .services.ocr import import_stream
+                    import_stream(conn, run_id, job_dir / "ocr_reads.jsonl")
                     frames, window = d["frames_processed"], d["window_sec"]
                     count = db.scalar(conn, "SELECT COUNT(*) FROM sightings WHERE run_id = ?", (run_id,))
                     message = f"Incomplete results: {frames} saved frames, {count} plate records"
@@ -273,6 +275,7 @@ class Worker:
         out = job_dir / "result.mp4"
         prof.update(source=job["input_path"], start_sec=0.0, duration=0.0, out=str(out), summary_sec=0.0, hud_banner="",
                     evidence_dir=str((job_dir / "evidence").resolve()),
+                    ocr_reads_jsonl=str((job_dir / "ocr_reads.jsonl").resolve()),
                     stop_file=str((job_dir / "stop.request").resolve()), registry_sim_events=[], video_start_time=job["recorded_at"][:19], camera_name=cam["name"],
                     hud_title=f"SECS Vision · {cam['name']}")
         if not scene["frame_crop"]:
@@ -319,6 +322,8 @@ class Worker:
                     results=results, evidence=results, clock_origin=clock.parse(job["recorded_at"]),
                     origin="upload", video=video, video_kind=kind, video_offset=0.0,
                     note=f"Uploaded video, scene: {scene['label']}", job_id=job["id"])
+                from .services.ocr import import_stream
+                import_stream(conn, run_id, job_dir / "ocr_reads.jsonl")
                 n = db.scalar(conn, "SELECT COUNT(*) FROM sightings WHERE run_id = ?", (run_id,))
                 conn.execute("UPDATE jobs SET result_complete=1, saved_frames=?, saved_window=? WHERE id=?",
                              (d["frames"], db.js(d.get("window_sec")), job["id"]))

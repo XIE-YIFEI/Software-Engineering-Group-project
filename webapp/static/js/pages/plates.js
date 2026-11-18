@@ -101,6 +101,7 @@
     if (d.track_ids.length) add("Track ids", d.track_ids.join(", "));
     add("Other sightings of this plate", d.other_sightings);
     detail.append(kv);
+    App.ocrPanel(detail, d.id);
     if (d.alerts.length) detail.append(el("h3", { style: { marginTop: "14px" }, text: "Alerts" }),
       ...d.alerts.map((a) => el("a", { href: `/alerts#${a.id}`, class: "row", style: { padding: "4px 0", color: "inherit" } }, sevPill(a.rank), el("b", { text: a.title }), el("span", { class: "muted", text: a.message }))));
     if (S.user.role === "police") {
