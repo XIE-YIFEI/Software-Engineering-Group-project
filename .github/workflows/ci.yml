@@ -36,6 +36,10 @@ jobs:
         run: python alpr/tests/test_alpr.py
       - name: FR03 uncertain-plate diagnostic tests
         run: python -m unittest discover -s alpr/tests -p test_diagnostics.py -v
+      - name: P03 streaming OCR event tests
+        run: python -m unittest discover -s alpr/tests -p test_ocr_events.py -v
+      - name: P03 checkpoint and cooperative stop tests
+        run: python -m unittest discover -s alpr/tests -p test_checkpoints.py -v
 
 
       - name: Web system tests (FastAPI TestClient)

@@ -520,6 +520,7 @@ def _bare_pipeline(**cfg):
     """An AlprPipeline with only the plate-log / registry state (no models)."""
     from alpr.pipeline import AlprPipeline
     p = AlprPipeline.__new__(AlprPipeline)
+    p.ocr_events = None
     p.cfg, p.fps, p.log = AlprConfig(**cfg), 30.0, []
     p.checker, p.clock0 = PlateChecker(_registry()), NOW
     p._reset_apart()
