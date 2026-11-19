@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 import json
-import queue
 import re
 import subprocess
 import threading
@@ -21,6 +20,7 @@ from typing import Optional
 import yaml
 
 from . import clock, db
+from .job_process import ProcessLaunchError, job_process
 from .settings import ROOT, Settings
 
 WORKER: Optional["Worker"] = None
@@ -35,6 +35,7 @@ class Worker:
         self._thread: Optional[threading.Thread] = None
         self._proc: Optional[subprocess.Popen] = None
         self._job_id: Optional[int] = None
+        self._active_dir: Optional[Path] = None
 
     def start(self) -> None:
         global WORKER
@@ -51,10 +52,9 @@ class Worker:
 
     def cancel(self, job_id: int) -> None:
         # The DB flag is authoritative; _run also sees requests racing with spawn.
-        if self._job_id == job_id:
-            folder = self.settings.jobs_dir / f"job_{job_id}"
-            if folder.exists():
-                (folder / "stop.request").touch(exist_ok=True)
+        folder = self._active_dir
+        if self._job_id == job_id and folder == self.settings.jobs_dir / f"job_{job_id}":
+            (folder / "stop.request").touch(exist_ok=True)
 
     # ------------------------------------------------------------------ loop
     def _loop(self) -> None:
@@ -73,8 +73,7 @@ class Worker:
             try:
                 self.run_job(conn, job)
             except Exception as e:                                       # noqa: BLE001 - the job fails, not the worker
-                self._recover(conn, job, self.settings.jobs_dir / f"job_{job['id']}",
-                              f"{type(e).__name__}: {e}")
+                self._fail(conn, job["id"], f"{type(e).__name__}: {e}")
                 traceback.print_exc()
             finally:
                 self._job_id, self._proc = None, None
@@ -93,16 +92,25 @@ class Worker:
     def run_job(self, conn, job: dict) -> None:
         job_dir = self.settings.jobs_dir / f"job_{job['id']}"
         if self._cancelled(conn, job["id"]):
-            self._recover(conn, job, job_dir, "Cancelled before launch")
+            conn.execute("UPDATE jobs SET status='cancelled', message='Cancelled before launch', "
+                         "error=NULL, finished_at=? WHERE id=?", (clock.now_iso(), job["id"]))
             return
-        if job_dir.exists():
+        try:
+            job_dir.mkdir(parents=True, exist_ok=False)
+        except FileExistsError:
             self._fail(conn, job["id"], "Execution directory already exists; create a new job")
-            return  # Do not recover stale output from a different execution.
-        job_dir.mkdir(parents=True, exist_ok=False)
-        if job["kind"] == "image":
-            self._image(conn, job, job_dir)
-        else:
-            self._video(conn, job, job_dir)
+            return
+        # Only this invocation owns the directory and can recover from it.
+        self._active_dir = job_dir
+        try:
+            if job["kind"] == "image":
+                self._image(conn, job, job_dir)
+            else:
+                self._video(conn, job, job_dir)
+        except Exception as exc:
+            self._recover(conn, job, job_dir, f"{type(exc).__name__}: {exc}")
+        finally:
+            self._active_dir = None
 
     def _cancelled(self, conn, job_id: int) -> bool:
         return bool(db.scalar(conn, "SELECT cancel_requested FROM jobs WHERE id = ?", (job_id,)))
@@ -110,66 +118,59 @@ class Worker:
     def _run(self, conn, job: dict, cmd, log_path: Path, total_hint: Optional[int] = None,
              *, cooperative_stop: bool = True, timeout_sec: Optional[float] = None) -> int:
         env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
-        total = total_hint
         requested_at = terminated_at = None
         started_at = time.monotonic()
-        lines = queue.Queue()
-        with open(log_path, "w", encoding="utf-8") as log:
-            log.write(" ".join(map(str, cmd)) + "\n")
-            proc = subprocess.Popen([str(c) for c in cmd], cwd=str(ROOT), stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", env=env)
-            self._proc = proc
-            def read_lines():
-                try:
-                    for line in proc.stdout:
-                        lines.put(line)
-                finally:
-                    lines.put(None)
-            reader = threading.Thread(target=read_lines, daemon=True)
-            reader.start()
-            eof = False
+        # A regular file cannot hold up recovery waiting for a descendant's EOF.
+        log_path.write_text(" ".join(map(str, cmd)) + "\n", encoding="utf-8")
+        with log_path.open("ab", buffering=0) as log, log_path.open("rb") as progress_log:
+            progress_log.seek(0, os.SEEK_END)
+            pending = b""
             try:
-                while proc.poll() is None or not eof:
-                    now = time.monotonic()
-                    timed_out = timeout_sec is not None and now - started_at >= timeout_sec
-                    if proc.poll() is None and (self._cancelled(conn, job["id"]) or self._stop.is_set()
-                                                or timed_out):
-                        if requested_at is None:
-                            requested_at = now
-                            if cooperative_stop:
-                                (log_path.parent / "stop.request").touch(exist_ok=True)
-                        if terminated_at is None and (not cooperative_stop or timed_out or job["kind"] == "image" or
-                                now - requested_at >= self.settings.cancel_timeout_sec):
-                            proc.terminate()
-                            terminated_at = now
-                            log.write("Stopping child process: cancellation, shutdown or timeout\n")
-                        elif terminated_at is not None and now - terminated_at >= self.settings.terminate_timeout_sec:
-                            proc.kill()
-                    try:
-                        line = lines.get(timeout=0.1)
-                    except queue.Empty:
-                        continue
-                    if line is None:
-                        eof = True
-                        continue
-                    log.write(line)
-                    log.flush()
-                    m = PROGRESS.match(line.strip())
-                    if m:
-                        n, total = map(int, m.groups())
-                        conn.execute("UPDATE jobs SET expected_frames = ? WHERE id = ?", (total, job["id"]))
-                        conn.execute("UPDATE jobs SET progress = ?, message = ? WHERE id = ? AND cancel_requested = 0",
-                                     (min(0.99, n / max(1, total)), f"{n}/{total} frames", job["id"]))
-                rc = proc.wait()
-                # A terminated transcoder may handle the signal and return zero;
-                # that does not make its interrupted output a completed copy.
-                return 1 if not cooperative_stop and terminated_at is not None and rc == 0 else rc
+                with job_process([str(c) for c in cmd], cwd=str(ROOT), stdout=log,
+                                 stderr=subprocess.STDOUT, env=env) as proc:
+                    self._proc = proc
+                    while True:
+                        exit_code = proc.poll()
+                        now = time.monotonic()
+                        timed_out = timeout_sec is not None and now - started_at >= timeout_sec
+                        if exit_code is None and (self._cancelled(conn, job["id"]) or self._stop.is_set() or timed_out):
+                            if requested_at is None:
+                                requested_at = now
+                                if cooperative_stop:
+                                    (log_path.parent / "stop.request").touch(exist_ok=True)
+                            if terminated_at is None and (not cooperative_stop or timed_out or job["kind"] == "image" or
+                                    now - requested_at >= self.settings.cancel_timeout_sec):
+                                try:
+                                    proc.terminate()
+                                except ProcessLookupError:
+                                    pass
+                                else:
+                                    terminated_at = now
+                                    log.write(b"Stopping child process: cancellation, shutdown or timeout\n")
+                            elif terminated_at is not None and now - terminated_at >= self.settings.terminate_timeout_sec:
+                                try:
+                                    proc.kill()
+                                except ProcessLookupError:
+                                    pass
+                        if cooperative_stop:
+                            chunk = progress_log.read(64 * 1024)
+                            if chunk:
+                                lines = (pending + chunk).split(b"\n")
+                                pending = lines.pop()[-4096:]
+                                for line in reversed(lines):
+                                    match = PROGRESS.match(line.decode("utf-8", errors="replace").strip())
+                                    if match:
+                                        n, total = map(int, match.groups())
+                                        conn.execute("UPDATE jobs SET expected_frames = ? WHERE id = ?", (total, job["id"]))
+                                        conn.execute("UPDATE jobs SET progress = ?, message = ? WHERE id = ? AND cancel_requested = 0",
+                                                     (min(0.99, n / max(1, total)), f"{n}/{total} frames", job["id"]))
+                                        break
+                        if exit_code is not None:
+                            break
+                        time.sleep(0.05)
+                # A stopped transcoder can return zero without completing the copy.
+                return 1 if not cooperative_stop and terminated_at is not None and exit_code == 0 else exit_code
             finally:
-                if proc.poll() is None:
-                    proc.kill()
-                    proc.wait()
-                reader.join(timeout=2)
-                proc.stdout.close()
                 self._proc = None
 
     def _recover(self, conn, job: dict, job_dir: Path, reason: str) -> None:
@@ -344,9 +345,11 @@ def playback_copy(src: Path, job_dir: Path, run_command) -> Path:
                str(dst)]
     except (ImportError, OSError, RuntimeError):
         return src
-    # The worker owns cancellation, timeout escalation and reaping this child.
-    # Let unrelated runner/database errors reach the existing recovery boundary.
-    return dst if run_command(cmd) == 0 else src
+    try:
+        return dst if run_command(cmd) == 0 else src
+    except ProcessLaunchError:
+        # Transcoding is optional. The recognition report is already on disk.
+        return src
 
 
 def _tail(path: Path, n: int = 15) -> str:

@@ -97,3 +97,14 @@ checkpoints 22/22 and OCR events 13/13. Transcoder cancellation uses a controlle
 Python child; kill escalation also uses a controlled process fixture. These
 results do not establish real FFmpeg transcoding, real-model integration or
 browser acceptance. Those checks remain pending joint testing.
+
+## Changes from the integration review
+
+A cancellation received before launch ends the job without opening a saved
+checkpoint. Only the invocation that creates the job directory may recover
+results from it. Command output goes to the job log file. After command exit,
+the worker no longer waits for a pipe to close and cleans up remaining processes
+in the Linux process group or Windows job. If optional FFmpeg conversion cannot
+start, the worker keeps the final recognition results and uses the uploaded
+video for playback. The original upload may still need a browser-compatible
+codec. Evidence packs label fallback frames using the stored video source.

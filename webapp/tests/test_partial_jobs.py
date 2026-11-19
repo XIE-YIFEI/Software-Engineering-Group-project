@@ -1,6 +1,6 @@
 """Web/recognition terminal recovery contract: no model or GPU required."""
 import json
-import io
+from contextlib import nullcontext
 import subprocess
 import sys
 import threading
@@ -102,6 +102,17 @@ class PartialJobsTests(unittest.TestCase):
     def test_stale_execution_directory_is_not_imported(self):
         self.save();self.w.run_job(self.c,self.job)
         self.assertEqual(self.state()['status'],'failed');self.assertIsNone(self.state()['run_id'])
+
+    def test_prelaunch_cancellation_does_not_import_stale_checkpoint(self):
+        self.save()
+        self.cancel()
+        self.w.run_job(self.c, self.job)
+        state = self.state()
+        self.assertEqual(state["status"], "cancelled")
+        self.assertEqual(state["message"], "Cancelled before launch")
+        self.assertIsNone(state["run_id"])
+        self.assertIsNone(state["saved_frames"])
+        self.assertTrue((self.folder / "result.partial.json").is_file())
 
     def test_identical_snapshot_retry_has_no_duplicates(self):
         self.save();self.finish(1);rid=self.state()['run_id']
@@ -260,6 +271,31 @@ class PartialJobsTests(unittest.TestCase):
         self.assertNotEqual(rc,0);self.assertLess(time.monotonic()-start,5)
         self.assertTrue((self.folder/'stop.request').exists())
 
+    def test_job_exit_cleans_up_background_process_with_inherited_stdout(self):
+        ready = self.folder / "helper.started"
+        survived = self.folder / "helper.finished"
+        helper = (
+            "from pathlib import Path; import time; "
+            f"Path({str(ready)!r}).touch(); time.sleep(2); "
+            f"Path({str(survived)!r}).touch()"
+        )
+        command = (
+            "from pathlib import Path; import subprocess, sys, time; "
+            f"subprocess.Popen([sys.executable, '-c', {helper!r}]); "
+            f"ready = Path({str(ready)!r}); deadline = time.monotonic() + 5\n"
+            "while not ready.exists() and time.monotonic() < deadline: time.sleep(.01)\n"
+            "assert ready.exists(); print('[1/2]', flush=True)\n"
+        )
+        start = time.monotonic()
+        result = self.w._run(self.c, self.job, [sys.executable, "-c", command], self.folder / "log.txt")
+        self.assertEqual(result, 0)
+        self.assertTrue(ready.is_file())
+        self.assertLess(time.monotonic() - start, 2)
+        self.assertEqual(self.state()["expected_frames"], 2)
+        # If cleanup missed the helper, it will write its completion marker.
+        time.sleep(2.1)
+        self.assertFalse(survived.exists())
+
     def test_cancel_during_playback_reaps_child_and_recovers_partial(self):
         self.save_final()
         self.st.cancel_timeout_sec = 30  # A transcoder cannot honor recognition's stop.request.
@@ -329,20 +365,48 @@ class PartialJobsTests(unittest.TestCase):
 
     def test_playback_timeout_kills_child_that_ignores_terminate(self):
         child = Mock()
-        child.stdout = io.StringIO('')
         exited = threading.Event()
         child.poll.side_effect = lambda: -9 if exited.is_set() else None
         child.kill.side_effect = exited.set
-        child.wait.return_value = -9
-        with patch('webapp.worker.subprocess.Popen', return_value=child):
+        with patch('webapp.worker.job_process', return_value=nullcontext(child)):
             rc = self.w._run(self.c, self.job, ['fixture-transcoder'], self.folder / 'playback.log',
                              cooperative_stop=False, timeout_sec=.01)
         self.assertEqual(rc, -9)
         child.terminate.assert_called_once()
         child.kill.assert_called_once()
-        child.wait.assert_called_once()
-        self.assertTrue(child.stdout.closed)
         self.assertIsNone(self.w._proc)
+
+    def test_ffmpeg_start_failure_preserves_complete_results(self):
+        self.save()
+        self.save_final()
+        absent_executable = str(self.folder / "missing-ffmpeg")
+        with patch("cv2.VideoCapture") as capture, \
+             patch("imageio_ffmpeg.get_ffmpeg_exe", return_value=absent_executable):
+            capture.return_value.get.return_value = 0
+            self.finish(0)
+        state = self.state()
+        self.assertEqual(state["status"], "done")
+        self.assertEqual(state["result_complete"], 1)
+        self.assertEqual(state["saved_frames"], 900)
+        run = db.row(self.c, "SELECT * FROM runs WHERE id=?", (state["run_id"],))
+        self.assertEqual(Path(run["video_path"]), self.input)
+        self.assertEqual(run["video_kind"], "source")
+
+    def test_evidence_pack_labels_fallback_from_uploaded_source(self):
+        import numpy as np
+
+        alert = db.row(self.c, "SELECT id, run_id, sighting_id FROM alerts WHERE sighting_id IS NOT NULL LIMIT 1")
+        self.c.execute("UPDATE runs SET origin='upload', video_kind='source', video_path=? WHERE id=?",
+                       (str(self.input), alert["run_id"]))
+        self.c.execute("UPDATE sightings SET scene_path=NULL, crop_path=NULL WHERE id=?",
+                       (alert["sighting_id"],))
+        with W.client(self.app, "police1") as police, patch("cv2.VideoCapture") as capture:
+            capture.return_value.read.return_value = (True, np.zeros((20, 30, 3), dtype=np.uint8))
+            response = police.get(f"/api/v1/alerts/{alert['id']}/evidence", params={"format": "html"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Frame from the uploaded video", response.text)
+        self.assertIn("The stored scene frame was unavailable", response.text)
+        self.assertNotIn("without --evidence", response.text)
 
     def test_playback_success_or_failure_selects_only_completed_copy(self):
         for rc in (0, 1):
@@ -363,18 +427,15 @@ class PartialJobsTests(unittest.TestCase):
 
     def test_playback_timeout_with_zero_exit_is_not_a_completed_copy(self):
         child = Mock()
-        child.stdout = io.StringIO('')
         exited = threading.Event()
         child.poll.side_effect = lambda: 0 if exited.is_set() else None
         child.terminate.side_effect = exited.set
-        child.wait.return_value = 0
-        with patch('webapp.worker.subprocess.Popen', return_value=child):
+        with patch('webapp.worker.job_process', return_value=nullcontext(child)):
             rc = self.w._run(self.c, self.job, ['fixture-transcoder'], self.folder / 'playback.log',
                              cooperative_stop=False, timeout_sec=.01)
         self.assertNotEqual(rc, 0)
         child.terminate.assert_called_once()
         child.kill.assert_not_called()
-        child.wait.assert_called_once()
 
     def test_cooperative_zero_exit_still_cancelled(self):
         self.save();self.cancel();self.st.cancel_timeout_sec=5
