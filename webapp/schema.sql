@@ -459,3 +459,17 @@ CREATE TABLE IF NOT EXISTS evidence_exports (
     image_hashes TEXT NOT NULL,               -- JSON {name: sha256}
     at TEXT NOT NULL
 );
+
+-- Optional P03 read evidence. Text is never served directly or placed in public media.
+CREATE TABLE IF NOT EXISTS ocr_streams (
+    run_id INTEGER PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
+    state TEXT NOT NULL, imported INTEGER NOT NULL DEFAULT 0,
+    invalid INTEGER NOT NULL DEFAULT 0, unmatched INTEGER NOT NULL DEFAULT 0,
+    trailing_line INTEGER NOT NULL DEFAULT 0, limited INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS ocr_read_evidence (
+    sighting_id INTEGER NOT NULL REFERENCES sightings(id) ON DELETE CASCADE,
+    source_line INTEGER NOT NULL, frame INTEGER NOT NULL, event TEXT NOT NULL,
+    PRIMARY KEY (sighting_id, source_line)
+);
+CREATE INDEX IF NOT EXISTS ocr_evidence_frame ON ocr_read_evidence (sighting_id, frame, source_line);

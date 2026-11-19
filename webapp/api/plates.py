@@ -5,7 +5,7 @@ import sqlite3
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, JSONResponse
 from pydantic import BaseModel
 
 from ..deps import current_user, get_conn
@@ -14,6 +14,7 @@ from ..security import User
 from ..services import alerts as alert_svc
 from ..services import evidence as evidence_svc
 from ..services import plates as plate_svc
+from ..services import ocr as ocr_svc
 
 router = APIRouter()
 
@@ -104,3 +105,15 @@ def api_evidence(alert_id: int, format: str = Query("html", pattern="^(html|pdf)
     return FileResponse(path, media_type="text/html; charset=utf-8" if format == "html" else "application/pdf",
                         filename=path.name, content_disposition_type="inline",
                         headers={"Cache-Control": "private, no-store"})
+
+
+@router.get("/sightings/{sighting_id}/ocr", tags=["plates"])
+def api_ocr(sighting_id: int, offset: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=500),
+            export: bool = False, user: User = Depends(current_user),
+            conn: sqlite3.Connection = Depends(get_conn)):
+    """Paginated P03 read evidence; export returns the same current-role-filtered page."""
+    data = ocr_svc.get(conn, user, sighting_id, offset=offset, limit=limit, exporting=export)
+    headers = {"Cache-Control": "private, no-store"}
+    if export:
+        headers["Content-Disposition"] = f'attachment; filename="sighting_{sighting_id}_ocr_{offset}.json"'
+    return JSONResponse(data, headers=headers)

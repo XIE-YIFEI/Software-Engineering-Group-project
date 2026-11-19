@@ -60,6 +60,7 @@
       if (v) kv.append(el("dt", { text: k }), el("dd", { text: v }));
     if (a.speed_text) kv.append(el("dt", { text: "Measured" }), el("dd", { text: a.speed_text }));
     d.append(kv);
+    if (a.sighting_id) App.ocrPanel(d, a.sighting_id);
     const imgs = el("div", { class: "row", style: { marginTop: "10px", alignItems: "flex-start" } });
     if (a.crop_url) imgs.append(el("img", { src: a.crop_url, alt: "plate crop", style: { height: "56px", borderRadius: "6px", border: "1px solid var(--line)", background: "#000" } }));
     if (a.scene_url) imgs.append(el("a", { href: a.scene_url, target: "_blank", rel: "noopener" }, el("img", { src: a.scene_url, alt: "scene frame", style: { height: "90px", borderRadius: "6px", border: "1px solid var(--line)" } })));

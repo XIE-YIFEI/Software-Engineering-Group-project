@@ -148,6 +148,43 @@ const App = (() => {
   }
   const download = (url) => { location.href = url; };
 
-  return { S, api, get, post, query, el, $, clear, time, hm, day, dt, pct, num, dur, mins, plate, pill, sevPill, statusPill,
+  // Selected per-read OCR evidence; server authorises each page/export anew.
+  function ocrPanel(container, sightingId) {
+    const panel = el("section", { style: { marginTop: "16px" } });
+    container.append(panel);
+    async function load(offset = 0) {
+      try {
+        const d = await get(`/api/v1/sightings/${sightingId}/ocr`, { offset, limit: 50 });
+        clear(panel);
+        panel.append(el("h3", { text: "OCR reading evidence" }),
+          el("p", { class: "muted", text: "Individual readings support review; they are not confirmed plates or rule decisions." }));
+        const w = d.saved_window;
+        panel.append(el("p", { class: "muted", text: `${d.complete ? "Completed analysis" : "Incomplete analysis"} · saved through frame ${d.saved_frames ?? "unknown"}${w ? ` · source ${w[0]}–${w[1]} s` : ""}` }));
+        if (!d.raw_visible) panel.append(el("p", { class: "notice", text: "Raw OCR alternatives are hidden for your role, including when the final plate is temporarily revealed." }));
+        if (d.stream.state !== "available") panel.append(el("p", { class: "notice", text: `Reading log: ${d.stream.state.replaceAll("_", " ")}. Available linked readings may be incomplete.` }));
+        if (d.stream.invalid || d.stream.unmatched || d.stream.trailing_line || d.stream.limited)
+          panel.append(el("p", { class: "muted", text: "Some log entries were invalid, outside saved coverage, unassociated or truncated; this view is not a complete raw history." }));
+        if (!d.items.length) panel.append(el("p", { class: "muted", text: "No linked readings on this page. Older runs may not have recorded OCR logs." }));
+        else panel.append(el("div", { class: "scroll" }, el("table", { class: "t" },
+          el("thead", {}, el("tr", {}, ...["Track / frame", "Source time", "Raw read", "Vote candidate", "Format", "Confidence / quality", "Vote admission"].map(x => el("th", { text: x })))),
+          el("tbody", {}, ...d.items.map(e => el("tr", {},
+            ...[`${e.track_id} / ${e.frame}`, `${e.time_sec} s`, e.raw_text ?? "—", e.voter_input_text ?? "—",
+              e.ocr_valid_format === null ? "Not evaluated" : e.ocr_valid_format ? "Valid" : "Invalid",
+              `${e.ocr_confidence ?? "—"} / ${e.crop_quality_score}`,
+              e.accepted_for_vote ? "Accepted" : e.reject_reason || "Not admitted"].map(x => el("td", { text: x }))))))));
+        const controls = el("div", { class: "row", style: { marginTop: "8px" } });
+        if (d.offset) controls.append(el("button", { class: "btn small", onclick: () => load(Math.max(0, d.offset - 50)) }, "Previous readings"));
+        controls.append(el("span", { class: "muted", text: `${d.total} linked readings` }),
+          el("button", { class: "btn small", onclick: () => download(`/api/v1/sightings/${sightingId}/ocr` + query({ offset: d.offset, limit: 50, export: true })) }, "Export this page · JSON"));
+        if (d.has_more) controls.append(el("button", { class: "btn small", onclick: () => load(d.offset + 50) }, "Next readings"));
+        panel.append(controls);
+      } catch (_) {
+        clear(panel).append(el("p", { class: "notice", text: "OCR reading evidence is unavailable. The review record remains available." }));
+      }
+    }
+    load();
+  }
+
+  return { ocrPanel, S, api, get, post, query, el, $, clear, time, hm, day, dt, pct, num, dur, mins, plate, pill, sevPill, statusPill,
            provPill, readingPill, EVENT_COLOUR, toast, fail, formDialog, reveal, player, download };
 })();
