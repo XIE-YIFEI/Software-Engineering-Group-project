@@ -24,7 +24,7 @@ METRICS = {"occupancy": "occupancy", "density": "density_veh_km", "speed": "mean
 
 def run_out(r: dict, user: Optional[User] = None) -> RunOut:
     playable = r["video_path"] and (user is None or can_play(user, r["camera_kind"]))
-    return RunOut(id=r["id"], code=r["code"], label=r["label"], camera_id=r["camera_id"], camera_name=r["camera_name"],
+    return RunOut(complete=bool(r.get("complete", 1)), id=r["id"], code=r["code"], label=r["label"], camera_id=r["camera_id"], camera_name=r["camera_name"],
                   camera_kind=r["camera_kind"], origin=r["origin"], media=r["media"], profile=r["profile"], fps=r["fps"],
                   frames=r["frames"], window_start_sec=r["window_start_sec"], window_end_sec=r["window_end_sec"],
                   clock_origin=r["clock_origin"], video_url=run_video_url(r["id"]) if playable else None,
@@ -42,6 +42,8 @@ def _run(conn: sqlite3.Connection, user: User, run_id: int) -> dict:
                      "ON c.id = r.camera_id WHERE r.id = ?", (run_id,))
     if r is None or r["camera_id"] not in visible_camera_ids(conn, user):
         raise LookupError("no such run")
+    if not r.get("complete", 1):
+        raise ValueError("Traffic totals are unavailable for incomplete analysis")
     return r
 
 
@@ -50,7 +52,7 @@ def runs(conn: sqlite3.Connection, user: User) -> List[RunOut]:
     require(user, *ROLES)
     rs = db.rows(conn, f"SELECT r.*, c.name AS camera_name, c.kind AS camera_kind FROM runs r JOIN cameras c ON "
                        f"c.id = r.camera_id WHERE r.camera_id IN {in_clause(visible_camera_ids(conn, user))} AND "
-                       f"(r.flow_total IS NOT NULL OR EXISTS (SELECT 1 FROM lanes l WHERE l.run_id = r.id)) "
+                       f"r.complete = 1 AND (r.flow_total IS NOT NULL OR EXISTS (SELECT 1 FROM lanes l WHERE l.run_id = r.id)) "
                        f"ORDER BY c.kind = 'lane' DESC, r.id")
     return [run_out(r, user) for r in rs]
 

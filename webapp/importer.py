@@ -96,6 +96,20 @@ def import_results(conn: sqlite3.Connection, settings: Settings, *, code: str, l
     inserted_plate). Returns the run id."""
     with open(results, encoding="utf-8") as f:
         d = json.load(f)
+    complete = d.get("complete") is not False
+    if not complete:
+        frames = d.get("frames_processed")
+        window = d.get("window_sec")
+        import math
+        if (type(frames) is not int or frames <= 0 or not isinstance(d.get("plates"), list)
+                or not isinstance(window, list) or len(window) != 2
+                or any(type(v) not in (int, float) or not math.isfinite(v) for v in window)
+                or window[1] < window[0] or type(d.get("fps")) not in (int, float)
+                or not math.isfinite(d["fps"]) or d["fps"] <= 0):
+            raise ValueError("Invalid or zero-progress partial result")
+        # Recovery snapshots have no supported traffic totals or simulated events.
+        d = {k: v for k, v in d.items() if k not in ("flow", "lanes", "simulated_events")}
+        flow_primary = False
     window = d.get("window_sec") or [0.0, 0.0]
     flow = d.get("flow") or {}
     reg = d.get("registry")
@@ -106,7 +120,8 @@ def import_results(conn: sqlite3.Connection, settings: Settings, *, code: str, l
             "results_path": rel(results), "results_sha256": sha256_file(results),
             "video_path": rel(video) if video else None, "video_kind": video_kind if video else None,
             "video_offset_sec": float(window[0] if video_offset is None else video_offset),
-            "image_path": None, "profile": d.get("profile"), "fps": d.get("fps"), "frames": d.get("frames"),
+            "image_path": None, "profile": d.get("profile"), "fps": d.get("fps"),
+            "complete": int(complete), "frames": d.get("frames") if complete else d["frames_processed"],
             "window_start_sec": window[0], "window_end_sec": window[1], "clock_origin": clock.iso(clock_origin),
             "provenance_note": note, "flow_primary": int(flow_primary), "count_line_y": flow.get("count_line_y"),
             "flow_total": flow.get("total"), "flow_by_type": db.js(flow.get("by_type") or {}),
@@ -129,7 +144,7 @@ def import_results(conn: sqlite3.Connection, settings: Settings, *, code: str, l
                 "last_sec": r["last_sec"], "seen_at": _at(clock_origin, r["first_sec"]),
                 "last_seen_at": _at(clock_origin, r["last_sec"]), "provenance": prov, "recorded_at": now},
                 key=("run_id", "natural_key"), keep=("crop_path", "scene_path", "scene_info"))
-            for a in r.get("alerts", []):
+            for a in r.get("alerts", []) if r.get("status") == "CONFIRMED" else []:
                 create_alert(conn, natural_key=f"{code}|{key}|{a['code']}", source="registry", code=a["code"],
                              severity=a["severity"], message=a["message"], seen_at=_at(clock_origin, r["first_sec"]),
                              provenance=prov, run_id=run_id, camera_id=camera_id, sighting_id=sid,
@@ -267,6 +282,9 @@ def _import_lanes(conn, code: str, run_id: int, camera_id: int, lanes: dict, ori
 def attach_evidence(conn: sqlite3.Connection, settings: Settings, run_id: int, code: str, evidence_json: Path) -> int:
     """Copy the crops and scene frames of a --evidence run into the media folder and link them to the rows of
     the same run (matched by first frame and plate: the evidence run gives identical results)."""
+    import cv2
+    import numpy as np
+
     with open(evidence_json, encoding="utf-8") as f:
         d = json.load(f)
     n = 0
@@ -279,20 +297,40 @@ def attach_evidence(conn: sqlite3.Connection, settings: Settings, run_id: int, c
         if sid is None:
             continue
         paths = {}
+        unavailable = None
         for kind in ("crop", "scene"):
             src = (ROOT / ev[kind]) if not Path(ev[kind]).is_absolute() else Path(ev[kind])
-            if not src.exists():
-                break
             dst_rel = f"runs/{code}/{src.name}"
-            (settings.media_dir / dst_rel).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, settings.media_dir / dst_rel)
+            dst = settings.media_dir / dst_rel
+            try:
+                if not src.exists():
+                    unavailable = f"{kind} image is missing"
+                    break
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
+                data = dst.read_bytes()
+            except OSError as exc:
+                unavailable = f"{kind} evidence storage unavailable ({type(exc).__name__})"
+                break
+            try:
+                image = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR) if data else None
+            except cv2.error:
+                image = None
+            if image is None:
+                unavailable = f"{kind} image could not be decoded"
+                break
             paths[kind] = dst_rel
+        info = {k: ev.get(k) for k in ("frame", "time_sec", "vehicle_box", "plate_box")}
+        info["source"] = rel(evidence_json)
         if len(paths) == 2:
-            info = {k: ev.get(k) for k in ("frame", "time_sec", "vehicle_box", "plate_box")}
-            info["source"] = rel(evidence_json)
             conn.execute("UPDATE sightings SET crop_path = ?, scene_path = ?, scene_info = ? WHERE id = ?",
                          (paths["crop"], paths["scene"], db.js(info), sid))
             n += 1
+        else:
+            # Only evidence IO/decoding is optional. SQL and malformed imports must still fail.
+            info["unavailable_reason"] = unavailable
+            conn.execute("UPDATE sightings SET crop_path = NULL, scene_path = NULL, scene_info = ? WHERE id = ?",
+                         (db.js(info), sid))
     return n
 
 

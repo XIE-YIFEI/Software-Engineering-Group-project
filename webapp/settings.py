@@ -46,6 +46,13 @@ class Settings:
     registry_path: Path
     python: str = field(default_factory=lambda: os.environ.get("SECS_PYTHON") or sys.executable)
     root: Path = ROOT
+    cancel_timeout_sec: float = field(default_factory=lambda: float(os.environ.get("SECS_CANCEL_TIMEOUT_SEC", "30")))
+    terminate_timeout_sec: float = field(default_factory=lambda: float(os.environ.get("SECS_TERMINATE_TIMEOUT_SEC", "5")))
+
+    def __post_init__(self):
+        import math
+        if any(not math.isfinite(v) or v <= 0 for v in (self.cancel_timeout_sec, self.terminate_timeout_sec)):
+            raise ValueError("Cancellation timeouts must be positive finite seconds")
 
     @property
     def db_path(self) -> Path:

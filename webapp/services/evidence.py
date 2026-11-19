@@ -88,7 +88,7 @@ def _scene_image(st, s: dict) -> Optional[dict]:
 
 
 def _video_frame(run: dict, at_sec: float) -> Optional[dict]:
-    """Fallback when no raw frame was saved: a frame of the committed annotated video at the record's time."""
+    """Use a video frame when the stored scene evidence is unavailable."""
     import cv2
     if not run.get("video_path"):
         return None
@@ -100,10 +100,19 @@ def _video_frame(run: dict, at_sec: float) -> Optional[dict]:
     cap.release()
     if not ok:
         return None
-    return {"name": "video_frame.jpg", "title": "Frame of the annotated demo video",
-            "caption": f"No raw camera frame was saved for this record (the run was made without --evidence), so this "
-                       f"is the frame of the annotated video at {at_sec:.1f} s of the source, while the vehicle was in "
-                       f"view; its overlays were drawn by the system.",
+    kind = run.get("video_kind")
+    if kind == "source":
+        title = "Frame from the uploaded video" if run.get("origin") == "upload" else "Frame from the source video"
+        video = "the source video"
+    elif kind == "annotated":
+        title = "Frame from the annotated video"
+        video = "the video with system overlays"
+    else:
+        title = "Frame from the available video"
+        video = "the available video"
+    return {"name": "video_frame.jpg", "title": title,
+            "caption": f"The stored scene frame was unavailable. This fallback frame comes from {video} "
+                       f"at {at_sec:.1f} s on the source timeline.",
             "bytes": _jpeg(frame)}
 
 

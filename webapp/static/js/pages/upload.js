@@ -34,13 +34,16 @@
           el("div", { class: "row" }, el("b", { text: `#${j.id}` }), pill(j.kind, "gray", false), el("span", { text: j.original_name }), pill(j.status, STATUS[j.status] || "gray"),
             el("span", { class: "muted", text: `${j.camera_name} · recorded ${dt(j.recorded_at)} · by ${j.created_by}` })),
           el("div", { class: "row" },
-            ["queued", "running"].includes(j.status) ? el("button", { class: "btn small danger", onclick: async () => { try { await post(`/api/v1/jobs/${j.id}/cancel`); refresh(); } catch (e) { fail(e); } } }, "Cancel") : null,
+            ["queued", "running"].includes(j.status) && !j.cancel_requested ? el("button", { class: "btn small danger", onclick: async () => { try { await post(`/api/v1/jobs/${j.id}/cancel`); refresh(); } catch (e) { fail(e); } } }, "Cancel") : null,
             j.run_id ? el("a", { class: "btn small", href: `/plates?run_id=${j.run_id}` }, "Plates ›") : null,
-            j.run_id && j.kind === "video" ? el("a", { class: "btn small", href: `/traffic?run=${j.run_id}` }, "Traffic ›") : null)),
+            j.run_id && j.kind === "video" && j.result_complete !== false ? el("a", { class: "btn small", href: `/traffic?run=${j.run_id}` }, "Traffic ›") : null)),
+        j.cancel_requested && j.status === "running" ? el("p", { class: "notice info", text: "Cancellation requested — saving results" }) : null,
+        j.result_complete === false ? el("p", { class: "notice info", text: `Incomplete results · ${j.saved_frames} saved frames` + (j.saved_window ? ` · video ${j.saved_window[0]}–${j.saved_window[1]} s` : "") + ". Traffic totals unavailable." }) : null,
         el("div", { class: "row", style: { marginTop: "6px" } },
           el("div", { class: "bar-track", style: { flex: 1 } }, el("div", { class: "bar-fill", style: { width: `${Math.round(j.progress * 100)}%`, background: j.status === "failed" ? "var(--red)" : undefined } })),
-          el("span", { class: "muted num", style: { minWidth: "40px", textAlign: "right" }, text: `${Math.round(j.progress * 100)} %` })),
-        el("div", { class: "muted", style: { fontSize: "12px", marginTop: "4px" }, text: j.error ? j.error.split("\n").slice(-3).join(" ") : j.message })));
+          el("span", { class: "muted num", style: { minWidth: "40px", textAlign: "right" }, text: j.result_complete === false && !j.expected_frames ? "—" : `${Math.round(j.progress * 100)} %` })),
+        el("div", { class: "muted", style: { fontSize: "12px", marginTop: "4px" }, text: j.message }),
+        j.error ? el("div", { class: "muted", text: j.error.split("\n").slice(-3).join(" ") }) : null));
     }
     const busy = jobs.some((j) => ["queued", "running"].includes(j.status));
     clearTimeout(timer);

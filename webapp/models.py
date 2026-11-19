@@ -67,6 +67,7 @@ class CameraOut(BaseModel):
 
 
 class RunOut(BaseModel):
+    complete: bool = True
     id: int
     code: str
     label: str
@@ -487,6 +488,11 @@ class PassOut(BaseModel):
 
 
 class JobOut(BaseModel):
+    cancel_requested: bool = False
+    result_complete: Optional[bool] = None
+    saved_frames: Optional[int] = None
+    saved_window: Optional[List[float]] = None
+    expected_frames: Optional[int] = None
     id: int
     kind: str
     status: str

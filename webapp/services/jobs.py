@@ -35,7 +35,10 @@ UPLOAD_RULES = ["ILLEGAL_FORMAT", "DUPLICATE"]
 
 
 def _out(j: dict) -> JobOut:
-    return JobOut(id=j["id"], kind=j["kind"], status=j["status"], progress=j["progress"], message=j["message"],
+    return JobOut(cancel_requested=bool(j.get("cancel_requested")), result_complete=j.get("result_complete"),
+                  saved_frames=j.get("saved_frames"), saved_window=db.unjs(j.get("saved_window")),
+                  expected_frames=j.get("expected_frames"),
+                  id=j["id"], kind=j["kind"], status=j["status"], progress=j["progress"], message=j["message"],
                   original_name=j["original_name"], scene=j["scene"], render_video=bool(j["render_video"]),
                   camera_id=j["camera_id"], camera_name=j.get("camera_name") or "", recorded_at=j["recorded_at"],
                   created_by=j.get("username") or "", created_at=j["created_at"], started_at=j["started_at"],
@@ -109,11 +112,16 @@ def get(conn: sqlite3.Connection, user: User, job_id: int) -> JobOut:
 
 
 def cancel(conn: sqlite3.Connection, user: User, job_id: int) -> JobOut:
-    j = get(conn, user, job_id)
-    if j.status not in ("queued", "running"):
-        raise ValueError(f"the job is {j.status}")
-    conn.execute("UPDATE jobs SET status = 'cancelled', message = 'cancelled', finished_at = ? WHERE id = ? AND status IN "
-                 "('queued', 'running')", (clock.now_iso(), job_id))
+    with db.transaction(conn):
+        j = get(conn, user, job_id)
+        if j.status == "cancelled" or j.cancel_requested:
+            return j
+        if j.status not in ("queued", "running"):
+            raise ValueError(f"the job is {j.status}")
+        queued = j.status == "queued"
+        conn.execute("UPDATE jobs SET cancel_requested = 1, status = ?, message = ?, finished_at = ? WHERE id = ?",
+                     ("cancelled" if queued else "running", "cancelled" if queued else
+                      "Cancellation requested — saving results", clock.now_iso() if queued else None, job_id))
     from ..worker import WORKER
     if WORKER is not None:
         WORKER.cancel(job_id)
