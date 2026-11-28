@@ -1,0 +1,156 @@
+{
+  "package_root": "PR4_D3_REVIEWED_REV2_20261128T1326352919261Z",
+  "revision": "Rev2",
+  "current_reviewer_status": "Toby review confirmed — user-provided message",
+  "review_message_timestamp": null,
+  "all_artifacts_available_separately": true,
+  "raw_artifacts_in_git": false,
+  "original_video_available": false,
+  "selected_artifact_count": 18,
+  "files": [
+    {
+      "relative_path": "D3_summary_en_rev2.txt",
+      "size_bytes": 2743,
+      "sha256": "fcc7768c830bacdc3a2f7dba3db7dd5926d9e6a4038f1bb208e5ebeaeab7483a",
+      "historical": false,
+      "scope": "separate_review_package",
+      "included_in_git": false
+    },
+    {
+      "relative_path": "ERRATA_REV2_EN.txt",
+      "size_bytes": 2336,
+      "sha256": "37f8db4abe5f029cbf09dc73b6e4321e12338ed561d964f0dae85e9cfb684f37",
+      "historical": false,
+      "scope": "separate_review_package",
+      "included_in_git": false
+    },
+    {
+      "relative_path": "evidence/logs/job_6_observer_console.log",
+      "size_bytes": 26357,
+      "sha256": "0fc806f7a9d1a16dfe3e78c998d435c101755308b0f493fa2ffcc29a64e78550",
+      "historical": false,
+      "scope": "separate_review_package",
+      "included_in_git": false
+    },
+    {
+      "relative_path": "evidence/process_and_timing/first_conversion_gate.json",
+      "size_bytes": 7744,
+      "sha256": "3b24b4c82126435cf1d42f9e532736675fb076d06e8e963af726e3be1c8056e8",
+      "historical": false,
+      "scope": "separate_review_package",
+      "included_in_git": false
+    },
+    {
+      "relative_path": "evidence/process_and_timing/job6_audit_actions.json",
+      "size_bytes": 1012,
+      "sha256": "47624ceaeb58678738953f3d61e1ed125ce127d8eb772054bd1d02dca6da43b3",
+      "historical": false,
+      "scope": "separate_review_package",
+      "included_in_git": false
+    },
+    {
+      "relative_path": "evidence/process_and_timing/job_6_observer_1795800232296351400.jsonl",
+      "size_bytes": 34328,
+      "sha256": "dbe1228524552c91ae43449a3ba0e2ad778589ac2b116f297ec44d8ac9564b5d",
+      "historical": false,
+      "scope": "separate_review_package",
+      "included_in_git": false
+    },
+    {
+      "relative_path": "evidence/process_and_timing/prompt_events.jsonl",
+      "size_bytes": 471062,
+      "sha256": "af39334aaf9a59d0bb4ffb3e0dcf8833345ee24406d6cb8009598738effea5fe",
+      "historical": false,
+      "scope": "separate_review_package",
+      "included_in_git": false
+    },
+    {
+      "relative_path": "evidence/process_and_timing/prompt_log_parse_audit.json",
+      "size_bytes": 876846,
+      "sha256": "552d6c41f0611e1061e78050eb2f03852a6ea6b69d857fe7abf9e31b7eb06955",
+      "historical": false,
+      "scope": "separate_review_package",
+      "included_in_git": false
+    },
+    {
+      "relative_path": "evidence/recording/D3_website_recording.mp4",
+      "size_bytes": 4986745,
+      "sha256": "ce1d70f92b02546a16a5cd73b760ca20527c39e2015eb56d28284f65b4f2624d",
+      "historical": false,
+      "scope": "separate_review_package",
+      "included_in_git": false
+    },
+    {
+      "relative_path": "README_EN.txt",
+      "size_bytes": 5645,
+      "sha256": "e2d47303586b3c2cb1c9563a7dc10997da100d1d8e8fe26c786bb88053486bc0",
+      "historical": false,
+      "scope": "separate_review_package",
+      "included_in_git": false
+    },
+    {
+      "relative_path": "recording_navigation.json",
+      "size_bytes": 6294,
+      "sha256": "349704a03500a0003221a2e5dc6aca36fad646c1c11d7fcf2e80bf753cca5cbd",
+      "historical": false,
+      "scope": "separate_review_package",
+      "included_in_git": false
+    },
+    {
+      "relative_path": "recording_navigation_en.txt",
+      "size_bytes": 2609,
+      "sha256": "c55d853ce103142c37f31afb62e3bd77c8e7b7a2128a62c608d354c694c5fb06",
+      "historical": false,
+      "scope": "separate_review_package",
+      "included_in_git": false
+    },
+    {
+      "relative_path": "report_revision_relation.json",
+      "size_bytes": 969,
+      "sha256": "23794f3dac47169562e4ffd7b72db87f5c1ed1dfbe732e517c083ff2595d2fd1",
+      "historical": false,
+      "scope": "separate_review_package",
+      "included_in_git": false
+    },
+    {
+      "relative_path": "reports/scenario_D3_report_zh_rev2.txt",
+      "size_bytes": 5616,
+      "sha256": "6e5b3c5c888653c2fcae5c31ebeb0759e86e62a49bddc9be9b9c3ae775dae701",
+      "historical": false,
+      "scope": "separate_review_package",
+      "included_in_git": false
+    },
+    {
+      "relative_path": "reports/scenario_D3_result_rev2.json",
+      "size_bytes": 34366,
+      "sha256": "ff80c15ee994dd44fe79f136da767a42f29c7f62b371f66676e1fd98834d16dc",
+      "historical": false,
+      "scope": "separate_review_package",
+      "included_in_git": false
+    },
+    {
+      "relative_path": "reviewer_confirmation.json",
+      "size_bytes": 1138,
+      "sha256": "e373f280d4638bcd5e9c3d9a291af04a710fadd529b5330b62d148003ba2a584",
+      "historical": false,
+      "scope": "separate_review_package",
+      "included_in_git": false
+    },
+    {
+      "relative_path": "timing_observation_correction.json",
+      "size_bytes": 1004,
+      "sha256": "42e26a81c22a1147e1bf16ea088187b3af7abaecc1e0984905b264a37278dcac",
+      "historical": false,
+      "scope": "separate_review_package",
+      "included_in_git": false
+    },
+    {
+      "relative_path": "PR4_D3_REVIEWED_REV2_20261128T1326352919261Z.zip",
+      "size_bytes": 14835940,
+      "sha256": "c9fc7e5b757a13fc7f2d7e4c04c938175132c3570830d067c81be4b83001be7c",
+      "scope": "revision_handoff_directory",
+      "included_in_git": false
+    }
+  ],
+  "explanation": "Metadata only. Current raw source evidence is preserved separately; the deleted original video is not offered. Previous manifests retain their historical identities."
+}

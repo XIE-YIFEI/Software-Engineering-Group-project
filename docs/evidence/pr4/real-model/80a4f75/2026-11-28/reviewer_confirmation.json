@@ -1,0 +1,22 @@
+{
+  "status": "Toby review confirmed — user-provided message",
+  "source_type": "User-provided report of Toby message in this conversation; no independently retrieved original message or GitHub record",
+  "user_supplied_message": "Toby 已复核 D3 补充包及此前 A/B/C 证据，明确确认 D3 passes on 80a4f75，并表示会将 reviewed A–D results 写入 PR #4 acceptance notes。",
+  "literal_English_fragments_supplied_by_user": [
+    "D3 passes on 80a4f75",
+    "reviewed A–D results"
+  ],
+  "review_scope": [
+    "earlier A/B/C evidence",
+    "D3 supplementary package"
+  ],
+  "explicit_confirmation": "D3 PASS on 80a4f75",
+  "planned_action": "Toby intends to record reviewed A–D results in PR #4 acceptance notes",
+  "review_message_timestamp": null,
+  "review_message_timestamp_explanation": "No explicit timestamp supplied; no review time inferred",
+  "GitHub_acceptance_notes_verified": false,
+  "GitHub_acceptance_notes_already_written_claimed": false,
+  "merge_claimed": false,
+  "revision_prepared_at_utc": "2026-11-28T13:26:35.696773+00:00",
+  "prepared_time_is_not_review_time": true
+}
